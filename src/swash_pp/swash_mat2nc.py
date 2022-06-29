@@ -1,0 +1,279 @@
+"""
+Created on May 04 2021
+Write nc files from SWASH gridded mat output runs.
+@author: rfonsecadasilva
+"""
+
+def swashdict(path_sc=""):
+    """
+    Return swash_dict (dictionary with output metadata)
+    path_sc is the path of SWASH source code if using developer mode.
+    """
+    def swashunit(init):
+        """
+        Return dict swash_units (e.g., uh corresponds to m)
+        """
+        swash_unit={}
+        lr=[]
+        lr.append([index for index,value in enumerate(init) if "! units" in value][0]+2)
+        lr.append([index for index,value in enumerate(init) if "! some constants" in value][0]-1)
+        for i in range(lr[0],lr[1]):
+            swash_unit[init[i].split()[0]]=init[i].split("'")[-2]
+        return swash_unit
+
+    if path_sc!="":
+        #path_sc="/mnt/d/Renan/Renan-PhD/SWASH/Git_proj/swash-7.01_further/code/"
+        init = open(path_sc+"SwashInit.ftn90","r").readlines()
+        print("test here")
+    else:
+        import urllib.request
+        import tarfile
+        from io import BytesIO
+        tmpfile = BytesIO()
+        tmpfile.write(urllib.request.urlopen("https://swash.sourceforge.io/download/zip/swash-7.01.tar.gz").read())
+        tmpfile.seek(0)
+        tfile = tarfile.open(fileobj=tmpfile, mode="r:gz")
+        init=tfile.extractfile('swash/SwashInit.ftn90').readlines()
+        tmpfile.close()
+        tfile.close()
+        init=[i.decode('UTF-8') for i in init]
+    
+    swash_dict={}
+    lr=0
+    while [index for index,value in enumerate(init[lr:]) if "ivtype = " in value]:
+        lr+= [index for index,value in enumerate(init[lr:]) if "ivtype = " in value][0]
+        ent=[]
+        lr = [lr+index for index,value in enumerate(init[lr:]) if "ovkeyw" in value][0]
+        ent.append(init[lr].split("'")[-2])
+        lr = [lr+ index for index,value in enumerate(init[lr:]) if "ovsnam" in value][0]
+        ent.append(init[lr].split("'")[-2])
+        lr = [lr+index for index,value in enumerate(init[lr:]) if "ovlnam" in value][0]
+        ent.append(init[lr].split("'")[-2])
+        lr = [lr+index for index,value in enumerate(init[lr:]) if "ovunit" in value][0]
+        ent.append(init[lr].split()[-1])
+        swash_dict[ent[1]]=[ent[0],ent[2],ent[3]]
+    
+    swash_unit = swashunit(init)
+    for value in swash_dict.values():
+        if value[2] in swash_unit: value[2]=swash_unit[value[2]] # better than get, as string sometimes does not translate into acronym
+
+    attr_dict={"title": "SWASH output", # later on add SWASH version, etc, here as key entries (perhaps others from run.sws, e.g. nV)
+               "description": "SWASH output converted from series of mat files",
+                            }    
+
+    return swash_dict,attr_dict
+
+def load_req(path_run):
+    """
+    Return frame (list with grids - id, y and x) and reqn (list with request info - name, type (mean or inst), list of requested variables)
+    """
+    import numpy as np
+    sws=open(path_run+"run.sws","r").readlines()
+    # check nV
+    nV=int([i.split()[1] for i in sws if i[:3]=='VER'][0])
+    # Make list with requests (id, type, fname and list of variables)
+    req= [i for i in sws if i[:3]=='BLO' and '.mat' in i]
+    # req: name, type (mean or inst), list of requested variables
+    reqn = [ [i.split()[1],
+            ['mean','inst']['OUT' in i], # mean and instantaneous variables
+            [j.replace("'","") for j in i.split() if ".mat" in j][0], # name of .mat file
+            [i.split("OUT")[0].strip().split() for i in [i.split(".mat' ")[1] ]][0]] # list of requested variables
+            for i in req]    
+    # Make list with grids (id, y and x)
+    fname=[i.split()[1] for i in sws if i[:3]=='FRA'] #frame names
+    frame={} # id, y and x
+    for f in fname:
+        frame[f]=[[np.linspace(float(i.split()[3]),float(i.split()[3])+float(i.split()[6]),int(i.split()[8])+1) for i  in sws if i[:3]=='FRA' and  f==i.split()[1]][0], #y
+                            [np.linspace(float(i.split()[2]),float(i.split()[2])+float(i.split()[5]),int(i.split()[7])+1) for i  in sws if i[:3]=='FRA' and  f==i.split()[1]][0]] #x
+    
+    # cgrid for regular grid
+    cgrid={"'COMPGRID'":[np.linspace(float(i.split()[3]),float(i.split()[3])+float(i.split()[6]),int(i.split()[8])+1), #y
+                            np.linspace(float(i.split()[2]),float(i.split()[2])+float(i.split()[5]),int(i.split()[7])+1)]
+                for i in sws if i[:5]=='CGRID' and i.split()[1][:3]=='REG'}
+    if cgrid: frame={**frame,**cgrid}
+    else:
+        import scipy.io as sio
+        for i in reqn:
+            if 'YP' and 'XP' in i[3]:
+                out={}
+                out.update(sio.loadmat(path_run+i[2]))
+                out= dict(filter(lambda item:item[0] in ('Xp','Yp'),out.items())) # basic filter
+                cgrid={"'COMPGRID'":[list(out['Yp'][:,0][::-1]),list(out['Xp'][0,:])]}
+                frame={**frame,**cgrid}
+    return frame,reqn,nV
+
+
+def mat2nc_mean_2D(path_run,path_sc=""):
+    """
+    Save nc with dataset mean 2D
+    Iterates over output requests and create single nc file with all mean quantities.
+    Note: Only tested for multiple requests with one grid.
+    path_sc is the path of SWASH source code if using developer mode.
+    """
+    import scipy.io as sio
+    import xarray as xr
+    frame,reqn,_=load_req(path_run)
+    swash_dict,attr_dict=swashdict(path_sc=path_sc)
+    out={}
+    [out.update(sio.loadmat(path_run+mat[2])) for index,mat in enumerate(reqn) if reqn[index][1]=="mean" or 'XP' in reqn[index][3] or 'YP' in reqn[index][3]] # read only 'man' data
+    out= dict(filter(lambda item:item[0] not in ('__header__', '__version__', '__globals__'),out.items())) # basic filter
+    out= dict(filter(lambda item:not item[0][-1].isdigit(),out.items())) # filtering to remove 3D and instantaneous data (last character is digit)    
+    ds=xr.Dataset(
+                data_vars={key: (("y", "x"), value[::-1,:],{"standard_name": key,
+                                                            "long_name": swash_dict.get(key,['']*2)[1],
+                                                            "units": swash_dict.get(key,['']*3)[2]})
+                        for key,value in out.items() if key not in ('Xp','Yp')},
+                        attrs=attr_dict
+                )
+
+    if 'Yp' in out:
+        ds=ds.assign_coords(y=out['Yp'][:,0][::-1]) #include cgrid here later on
+        ds.y.attrs = {"standard_name": swash_dict['Yp'][0],"long_name": swash_dict['Yp'][1], "units": swash_dict['Yp'][2],"axis":"Y"}
+    if 'Xp' in out:
+        ds=ds.assign_coords(x=out['Xp'][0,:])
+        ds.x.attrs = {"standard_name": swash_dict['Xp'][0],"long_name": swash_dict['Xp'][1], "units": swash_dict['Xp'][2],"axis":"X"}    
+    print(f"Saving mean_2D.nc")
+    ds.to_netcdf(path_run+f"mean_2D.nc")
+
+def mat2nc_mean_3D(path_run,path_sc=""):
+    """
+    Save nc with dataset mean 3D
+    Iterates over output requests and create single nc file with all mean quantities.
+    Note: Only tested for multiple requests with one grid (e.g. COMPGRID).
+    path_sc is the path of SWASH source code if using developer mode.
+    """
+    import scipy.io as sio
+    import xarray as xr
+    import numpy as np
+    frame,reqn,nV=load_req(path_run)
+    swash_dict,attr_dict=swashdict(path_sc=path_sc)
+    out={}
+    [out.update(sio.loadmat(path_run+mat[2])) for index,mat in enumerate(reqn) if reqn[index][1]=="mean" or 'XP' in reqn[index][3] or 'YP' in reqn[index][3]] # read only 'mean' data
+    out= dict(filter(lambda item:item[0] not in ('__header__', '__version__', '__globals__'),out.items())) # basic filter
+    okv = list(set([i[:-1-nV//10] for i in dict(filter(lambda item:item[0][-1].isdigit(),out.items())).keys()])) # filter 3D data (ends with digit), will be datarray name
+    okv_k=[[int(i[len(j):]) for i in out.keys() if i[:len(j)]==j] for j in okv] # will be k axis
+    out_k= [[value for i,value in out.items() if i[:len(j)]==j] for j in okv] #will be datarray
+    if out_k:
+        ds=xr.Dataset(
+                    data_vars={okv[index]: (("y", "x",["kc","ke"][min(okv_k[index])==0]), np.stack([v for v in value],axis=-1)[::-1],{"standard_name": okv[index],
+                                                                "long_name": swash_dict.get(okv[index],['']*2)[1],
+                                                                "units": swash_dict.get(okv[index],['']*3)[2]})
+                            for index,value in enumerate(out_k)},
+                            attrs=attr_dict
+                        )
+        if all([0 in okv_k[i] for i in range(len(okv_k))]): ds=ds.assign_coords(kc=okv_k[np.argmin([len(i) for i in okv_k])])
+        if any([0 in okv_k[i] for i in range(len(okv_k))]): ds=ds.assign_coords(ke=list(filter(lambda i:0 in i,okv_k))[0])
+        if 'Yp' in out:
+            ds=ds.assign_coords(y=out['Yp'][:,0][::-1]) #include cgrid here later on
+            ds.y.attrs = {"standard_name": swash_dict['Yp'][0],"long_name": swash_dict['Yp'][1], "units": swash_dict['Yp'][2],"axis":"Y"}
+        if 'Xp' in out:
+            ds=ds.assign_coords(x=out['Xp'][0,:])
+            ds.x.attrs = {"standard_name": swash_dict['Xp'][0],"long_name": swash_dict['Xp'][1], "units": swash_dict['Xp'][2],"axis":"X"}   
+        if 'kc' in ds:
+            ds.kc.attrs = {"standard_name": 'kc',"long_name": 'Vertical axis (cell centre)', "units": '',"axis":"kc"}
+        if 'ke' in ds:
+            ds.ke.attrs = {"standard_name": 'ke',"long_name": 'Vertical axis (cell edge)', "units": '',"axis":"ke"}    
+        print(f"Saving mean_3D.nc")
+        ds.to_netcdf(path_run+f"mean_3D.nc")     
+
+def mat2nc_ins_2D(path_run,path_sc=""):
+    """
+    Save nc with dataset instantaneous 2D
+    Iterates over output requests and create one nc file for every variable.
+    path_sc is the path of SWASH source code if using developer mode.
+    """
+    import scipy.io as sio
+    import xarray as xr
+    import numpy as np
+    frame,reqn,_=load_req(path_run)
+    swash_dict,attr_dict=swashdict(path_sc=path_sc)
+    ivl=[] # var, y,  x and output (.mat)
+    [[ivl.append([j,frame.get(i[0],['']*2)[0],frame.get(i[0],['']*2)[1],i[2]]) for j in  i[3] if j not in ['XP','YP','BOTL'] ] for i in reqn if i[1]=="inst"] # instantaneous variables list
+    ivl = list(filter(lambda i:i[0][-1]!="K" and i[0]!="VZ",ivl)) #filter only 2D data, later on improve filter
+    for i in ivl:
+        out={}
+        [out.update(sio.loadmat(path_run+mat[2])) for index,mat in enumerate(reqn) if i[3] == reqn[index][2]]
+        out= dict(filter(lambda item:item[0] not in ('__header__', '__version__', '__globals__'),out.items())) # basic filter
+        out= dict(filter(lambda item:swash_dict[item[0].split("_")[0]][0] in i[0],out.items())) # filter only relevant keys
+        var = list(out.keys())[0].split("_")[0] #name of variable, should be unique
+        ds=xr.Dataset(
+                    data_vars={var: (("y", "x","t"), (np.stack(list(out.values()), axis=-1))[::-1],
+                                                        {"standard_name": var,
+                                                        "long_name": swash_dict[var][1],
+                                                        "units": swash_dict[var][2]}),
+                            },
+                    coords={"y": i[1],
+                            "x": i[2],
+                            "t": [float(key[-10:-8])*60*60 +float(key[-8:-6])*60 +float(key[-6:-4]) + float(key[-3:])/1000 for key in out.keys()]
+                        },
+                        attrs=attr_dict
+                    )
+        ds.y.attrs = {"standard_name": swash_dict['Yp'][0],"long_name": swash_dict['Yp'][1], "units": swash_dict['Yp'][2],"axis":"Y"}
+        ds.x.attrs = {"standard_name": swash_dict['Xp'][0],"long_name": swash_dict['Xp'][1], "units": swash_dict['Xp'][2],"axis":"X"}
+        ds.t.attrs = {"standard_name": swash_dict['Tsec'][0],"long_name": swash_dict['Tsec'][1], "units": swash_dict['Tsec'][2],"axis":"t"}
+        print(f"Saving ins_2D_{i[0]}_{(i[3].split('.'))[0].split('/')[-1]}.nc")
+        ds.to_netcdf(path_run+f"ins_2D_{i[0]}_{i[3].split('.')[0].split('/')[-1]}.nc")
+
+
+def mat2nc_ins_3D(path_run,path_sc=""):
+    """
+    Save nc with dataset instantaneous 3D
+    Iterates over output requests and create one nc file for every variable.
+    path_sc is the path of SWASH source code if using developer mode.    
+    """
+    import scipy.io as sio
+    import xarray as xr
+    import numpy as np
+    frame,reqn,nV=load_req(path_run)
+    swash_dict,attr_dict=swashdict(path_sc=path_sc)
+    ivl=[] # var, y,  x and output (.mat)
+    [[ivl.append([j,frame.get(i[0],['']*2)[0],frame.get(i[0],['']*2)[1],i[2]]) for j in  i[3] if j not in ['XP','YP','BOTL'] ] for i in reqn if i[1]=="inst"] # instantaneous variables list
+    ivl = list(filter(lambda i:i[0][-1]=="K" or i[0]=="VZ",ivl)) #filter only 3D data, later on improve filter
+    for i in ivl:
+        out={}
+        [out.update(sio.loadmat(path_run+mat[2])) for index,mat in enumerate(reqn) if i[3] == reqn[index][2]]
+        out= dict(filter(lambda item:item[0] not in ('__header__', '__version__', '__globals__'),out.items())) # basic filter to exclude headings
+        if i[0]!="VZ" and i[0]!="VELK":
+            # only relevant keys for given request (works only for variables with Var_K01_time1_time2, thus not VZ or VELK or others to be found)            
+            out= dict(filter(lambda item:len(item[0].split("_"))==4 and swash_dict["_".join("".join(filter(lambda i:not i.isdigit(),"_".join(item[0].split("_")[:2]))).split("_")[:2])][0]==i[0],out.items()))
+            var = [j for i,j in enumerate(out.keys()) if i==0][0].split("_")[0]+"_k" #name of variable
+            okv_k=list(set([int(i.split("_")[1][1:]) for i in out.keys()])) #will be k axis
+            out_k=[dict(filter(lambda i:int(i[0].split("_")[1][1:])==k,out.items())) for k in okv_k] # filter by layer k
+        elif i[0]=="VZ":
+            out= dict(filter(lambda item:item[0][0]=="w",out.items())) # basic filter for vertical velocity
+            var = "w" #name of variable
+            okv_k=list(set([int(i.split("_")[0][1:]) for i in out.keys()])) #will be k axis
+            out_k=[dict(filter(lambda i:int(i[0].split("_")[0][1:])==k,out.items())) for k in okv_k] # filter by layer k
+        elif i[0]=="VELK": # not yet developed, code below is only for reference, e.g., requires separating x and y components before stacking
+            out= dict(filter(lambda item:item[0][:3]=="Vel",out.items())) # basic filter for velocity vector
+            var = "Vel_k" #name of variable
+            okv_k=list(set([int(i.split("_")[2][1:]) for i in out.keys()])) #will be k axis
+            out_k=[dict(filter(lambda i:int(i[0].split("_")[2][1:])==k,out.items())) for k in okv_k] # filter by layer k
+        t = [float(key[-10:-8])*60*60 +float(key[-8:-6])*60 +float(key[-6:-4]) + float(key[-3:])/1000 for key in out_k[0].keys()]
+        out_k=[np.stack(list(i.values()), axis=-1)[::-1] for i in out_k] # time stack
+        out_k= np.stack([v for v in out_k],axis=-2) #layer stack
+        ds=xr.Dataset(
+                    data_vars={var: (("y", "x",["kc","ke"][min(okv_k)==0],"t"), out_k,
+                                                        {"standard_name": var,
+                                                        "long_name": swash_dict[var][1],
+                                                        "units": swash_dict[var][2]}),
+                            },
+                    coords={"y": i[1],
+                            "x": i[2],
+                            ["kc","ke"][min(okv_k)==0] : okv_k,
+                            "t": t
+                            },
+                    attrs=attr_dict
+                    )
+        ds.y.attrs = {"standard_name": swash_dict['Yp'][0],"long_name": swash_dict['Yp'][1], "units": swash_dict['Yp'][2],"axis":"Y"}
+        ds.x.attrs = {"standard_name": swash_dict['Xp'][0],"long_name": swash_dict['Xp'][1], "units": swash_dict['Xp'][2],"axis":"X"}
+        if 'kc' in ds:
+            ds.kc.attrs = {"standard_name": 'kc',"long_name": 'Vertical axis (cell centre)', "units": '',"axis":"kc"}
+        if 'ke' in ds:
+            ds.ke.attrs = {"standard_name": 'ke',"long_name": 'Vertical axis (cell edge)', "units": '',"axis":"ke"}
+        ds.t.attrs = {"standard_name": swash_dict['Tsec'][0],"long_name": swash_dict['Tsec'][1], "units": swash_dict['Tsec'][2],"axis":"t"}        
+        print(f"Saving ins_3D_{i[0]}_{i[3].split('.')[0].split('/')[-1]}.nc")
+        ds.to_netcdf(path_run+f"ins_3D_{i[0]}_{i[3].split('.')[0].split('/')[-1]}.nc")
+
+if __name__ == '__main__':
+    pass
