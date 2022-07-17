@@ -76,7 +76,15 @@ def load_req(path_run):
             ['mean','inst']['OUT' in i], # mean and instantaneous variables
             [j.replace("'","") for j in i.split() if ".mat" in j][0], # name of .mat file
             [i.split("OUT")[0].strip().split() for i in [i.split(".mat' ")[1] ]][0]] # list of requested variables
-            for i in req]    
+            for i in req]
+    # Make list with table requests (id, type, fname and list of variables)
+    reqt= [i for i in sws if i[:3]=='TAB' in i]            
+     # reqt: name, type (mean or inst), list of requested variables
+    reqtable = [ [i.split()[1],
+            'inst', # assuming instantaneous variables
+            [j.replace("'","") for j in i.split() if ".tbl" in j][0], # name of .tbl file
+            [i.split("OUT")[0].strip().split() for i in [i.split(".tbl' ")[1] ]][0]] # list of requested variables
+            for i in reqt]
     # Make list with grids (id, y and x)
     fname=[i.split()[1] for i in sws if i[:3]=='FRA'] #frame names
     frame={} # id, y and x
