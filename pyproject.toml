@@ -21,4 +21,5 @@ dependencies = [
   "numpy",
   "scipy",
   "xarray",
+  "imageio",
 ]
