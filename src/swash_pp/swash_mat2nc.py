@@ -61,12 +61,12 @@ def swashdict(path_sc=""):
 
     return swash_dict,attr_dict
 
-def load_req(path_run):
+def load_req(path_run,run_file="run.sws"):
     """
     Return frame (list with grids - id, y and x) and reqn (list with request info - name, type (mean or inst), list of requested variables)
     """
     import numpy as np
-    sws=open(path_run+"run.sws","r").readlines()
+    sws=open(path_run+run_file,"r").readlines()
     # check nV
     nV=int([i.split()[1] for i in sws if i[:3]=='VER'][0])
     # Make list with requests (id, type, fname and list of variables)
@@ -123,7 +123,7 @@ def load_req(path_run):
     return frame,reqn,nV,reqtable,point
 
 
-def mat2nc_mean_2D(path_run,path_sc=""):
+def mat2nc_mean_2D(path_run,path_sc="",run_file="run.sws"):
     """
     Save nc with dataset mean 2D (one nc for all output)
     Iterates over output requests and create single nc file with all mean quantities.
@@ -132,7 +132,7 @@ def mat2nc_mean_2D(path_run,path_sc=""):
     """
     import scipy.io as sio
     import xarray as xr
-    frame,reqn,_,_,_=load_req(path_run)
+    _,reqn,_,_,_=load_req(path_run,run_file=run_file)
     swash_dict,attr_dict=swashdict(path_sc=path_sc)
     out={}
     [out.update(sio.loadmat(path_run+mat[2])) for index,mat in enumerate(reqn) if reqn[index][1]=="mean" or 'XP' in reqn[index][3] or 'YP' in reqn[index][3]] # read only 'man' data
@@ -155,7 +155,7 @@ def mat2nc_mean_2D(path_run,path_sc=""):
     print(f"Saving mean_2D.nc")
     ds.to_netcdf(path_run+f"mean_2D.nc")
 
-def mat2nc_mean_3D(path_run,path_sc=""):
+def mat2nc_mean_3D(path_run,path_sc="",run_file="run.sws"):
     """
     Save nc with dataset mean 3D (one nc for all output)
     Iterates over output requests and create single nc file with all mean quantities.
@@ -165,7 +165,7 @@ def mat2nc_mean_3D(path_run,path_sc=""):
     import scipy.io as sio
     import xarray as xr
     import numpy as np
-    frame,reqn,nV,_,_=load_req(path_run)
+    frame,reqn,nV,_,_=load_req(path_run,run_file=run_file)
     swash_dict,attr_dict=swashdict(path_sc=path_sc)
     out={}
     [out.update(sio.loadmat(path_run+mat[2])) for index,mat in enumerate(reqn) if reqn[index][1]=="mean" or 'XP' in reqn[index][3] or 'YP' in reqn[index][3]] # read only 'mean' data
@@ -196,7 +196,7 @@ def mat2nc_mean_3D(path_run,path_sc=""):
         print(f"Saving mean_3D.nc")
         ds.to_netcdf(path_run+f"mean_3D.nc")     
 
-def mat2nc_ins_2D(path_run,path_sc=""):
+def mat2nc_ins_2D(path_run,path_sc="",run_file="run.sws"):
     """
     Save nc with dataset instantaneous 2D (one nc for each variable)
     Iterates over output requests and create one nc file for every variable.
@@ -205,7 +205,7 @@ def mat2nc_ins_2D(path_run,path_sc=""):
     import scipy.io as sio
     import xarray as xr
     import numpy as np
-    frame,reqn,_,_,_=load_req(path_run)
+    frame,reqn,_,_,_=load_req(path_run,run_file=run_file)
     swash_dict,attr_dict=swashdict(path_sc=path_sc)
     ivl=[] # var, y,  x and output (.mat)
     [[ivl.append([j,frame.get(i[0],['']*2)[0],frame.get(i[0],['']*2)[1],i[2]]) for j in  i[3] if j not in ['XP','YP','BOTL'] ] for i in reqn if i[1]=="inst"] # instantaneous variables list
@@ -235,7 +235,7 @@ def mat2nc_ins_2D(path_run,path_sc=""):
         ds.to_netcdf(path_run+f"ins_2D_{i[0]}_{i[3].split('.')[0].split('/')[-1]}.nc")
 
 
-def mat2nc_ins_3D(path_run,path_sc=""):
+def mat2nc_ins_3D(path_run,path_sc="",run_file="run.sws"):
     """
     Save nc with dataset instantaneous 3D (one nc for each variable)
     Iterates over output requests and create one nc file for every variable.
@@ -244,7 +244,7 @@ def mat2nc_ins_3D(path_run,path_sc=""):
     import scipy.io as sio
     import xarray as xr
     import numpy as np
-    frame,reqn,nV,_,_=load_req(path_run)
+    frame,reqn,_,_,_=load_req(path_run,run_file=run_file)
     swash_dict,attr_dict=swashdict(path_sc=path_sc)
     ivl=[] # var, y,  x and output (.mat)
     [[ivl.append([j,frame.get(i[0],['']*2)[0],frame.get(i[0],['']*2)[1],i[2]]) for j in  i[3] if j not in ['XP','YP','BOTL'] ] for i in reqn if i[1]=="inst"] # instantaneous variables list
@@ -295,7 +295,7 @@ def mat2nc_ins_3D(path_run,path_sc=""):
         print(f"Saving ins_3D_{i[0]}_{i[3].split('.')[0].split('/')[-1]}.nc")
         ds.to_netcdf(path_run+f"ins_3D_{i[0]}_{i[3].split('.')[0].split('/')[-1]}.nc")
 
-def mat2nc_ins_table(path_run):
+def mat2nc_ins_table(path_run,path_sc="",run_file="run.sws"):
     """
     Save nc with dataset instantaneous table (does not work for vector output)
     It saves one netcdf file per line request.
@@ -303,8 +303,8 @@ def mat2nc_ins_table(path_run):
     import scipy.io as sio
     import xarray as xr
     import numpy as np
-    _,_,_,reqtable,point=load_req(path_run)
-    swash_dict,attr_dict=swashdict()
+    _,_,_,reqtable,point=load_req(path_run,run_file=run_file)
+    swash_dict,attr_dict=swashdict(path_sc=path_sc)
     swash_dict_rev={j[0]:[i]+j[1:] for i,j in swash_dict.items()}
     for tab in reqtable: #name, of grid type (mean or inst), name of tbl, list of requested variables
         out={}
