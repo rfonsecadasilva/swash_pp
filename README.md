@@ -13,23 +13,21 @@ cd swash_pp
 pip install -e .
 ```
 
-### Example of usage for creating nc from SWASH mat:
+### Example of usage for creating nc from SWASH mat files:
 ```
 from swash_pp import swash_mat2nc as snc
-snc.mat2nc_mean_2D(path_run="~/run_swash/")
+snc.mat2nc_all(path_run="~/run_swash/")
 ```
 
-### Example of loading nc with mean output, instantaneous water levels and runup:
+### Example of loading nc files into a list:
 ```
 import xarray as xr
-run ="examp_run":
-ds=([xr.open_dataset(run+"mean_2D.nc"),xr.open_dataset(run+"ins_2D_WATL_INST.nc"),xr.open_dataset(run+"ins_2D_IBP_RUNUP.nc")])
-ds[1]=ds[1].assign_coords(x=ds[0].x) # assuming mean and water levels at the same position, otherwise interpolate
-ds=xr.merge([ds[0],ds[1],ds[-1].isel(x=0,y=0).drop_vars(['y','x'])])
-ds
+import glob
+run ="examp_run"
+ds=[xr.open_dataset(i) for i in glob.glob("~/run_swash/*.nc")] 
 ```
 
-### Example of usage for creating gif animation with water level from xr data structure:
+### Example of usage for creating gif animation with water level from xr data structure ds (including x, Botlev, and Watlev):
 ```
 from swash_pp import swash_wl_gif as wlg
 gif_name="examp"
