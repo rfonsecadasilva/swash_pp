@@ -6,12 +6,18 @@ Write nc files from SWASH gridded mat output runs.
 
 def swashdict(path_sc=""):
     """
-    Return swash_dict (dictionary with output metadata)
-    path_sc is the path of SWASH source code if using developer mode.
+    Return dictionary with SWASH output metadata from source code.
+
+    Args:
+        path_sc (str, optional): path of SWASH source code if using developer mode (otherwise it parses SWASH 8.01 online version). Defaults to "".
+    
+    Returns:
+        swash_dict (dict): dictionary with SWASH output metadata (keyword, name, and units; read from SwashInit.ftn90)
+        attr_dict (dict): dictionary with SWASH version metadata
     """
     def swashunit(init):
         """
-        Return dict swash_units (e.g., uh corresponds to m)
+        Return dict swash_units (e.g., 'uh' corresponds to m)
         """
         swash_unit={}
         lr=[]
@@ -28,7 +34,7 @@ def swashdict(path_sc=""):
         import tarfile
         from io import BytesIO
         tmpfile = BytesIO()
-        tmpfile.write(urllib.request.urlopen("https://swash.sourceforge.io/download/zip/swash-7.01.tar.gz").read())
+        tmpfile.write(urllib.request.urlopen("https://swash.sourceforge.io/download/zip/swash-8.01.tar.gz").read())
         tmpfile.seek(0)
         tfile = tarfile.open(fileobj=tmpfile, mode="r:gz")
         init=tfile.extractfile('swash/SwashInit.ftn90').readlines()
@@ -65,7 +71,18 @@ def swashdict(path_sc=""):
 
 def load_req(path_run,run_file="run.sws"):
     """
-    Return frame (list with grids - id, y and x) and reqn (list with request info - name, type (mean or inst), list of requested variables)
+    Parse SWASH input file and return relevant information for creating nc files.
+
+    Args:
+        path_run (str): path where run file (*.sws) is located.
+        run_file (str, optional): run file name. Defaults to "run.sws".
+    
+    Returns:
+        frame (list): list with grids (requested with BLOCK command) - id, y, and x
+        reqn (list): list with gridded requests - id, type (mean or inst), and list of requested variables
+        nv (int): number of vertical layers
+        reqtable (list): list with table  requests - id, type (mean or inst), and list of requested variables
+        frame (list): list with table points (requested with POI command) - id, y, and x
     """
     import numpy as np
     sws=open(path_run+run_file,"r").readlines()
@@ -108,26 +125,17 @@ def load_req(path_run,run_file="run.sws"):
     cgrid={"'COMPGRID'":[np.linspace(float(i.split()[3]),float(i.split()[3])+float(i.split()[6]),int(i.split()[8])+1), #y
                             np.linspace(float(i.split()[2]),float(i.split()[2])+float(i.split()[5]),int(i.split()[7])+1)]
                 for i in sws if i[:5]=='CGRID' and i.split()[1][:3]=='REG'}
-    # cgrid for regular grid
-    cgrid={"'COMPGRID'":[np.linspace(float(i.split()[3]),float(i.split()[3])+float(i.split()[6]),int(i.split()[8])+1), #y
-                            np.linspace(float(i.split()[2]),float(i.split()[2])+float(i.split()[5]),int(i.split()[7])+1)]
-                for i in sws if i[:5]=='CGRID' and i.split()[1][:3]=='REG'}
     if cgrid: frame={**frame,**cgrid}
-    else:
-        import scipy.io as sio
-        for i in reqn:
-            if 'YP' and 'XP' in i[3]:
-                out={}
-                out.update(sio.loadmat(path_run+i[2]))
-                out= dict(filter(lambda item:item[0] in ('Xp','Yp'),out.items())) # basic filter
-                cgrid={"'COMPGRID'":[list(out['Yp'][:,0][::-1]),list(out['Xp'][0,:])]}
-                frame={**frame,**cgrid}
     return frame,reqn,nV,reqtable,point
 
 def mat2nc_all(path_run,path_sc="",run_file="run.sws"):
     """
-    Save one nc for each gridded matlab output
-    path_sc is the path of SWASH source code if using developer mode.
+    Convert all gridded matlab output into nc files
+
+    Args:
+        path_run (str): path where run file (*.sws) is located.
+        path_sc (str, optional): path of SWASH source code if using developer mode (otherwise it parses SWASH 8.01 online version). Defaults to "".
+        run_file (str, optional): run file name. Defaults to "run.sws".  
     """
     import scipy.io as sio
     import xarray as xr
