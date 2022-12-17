@@ -6,7 +6,7 @@ Write nc files from SWASH gridded mat output runs.
 
 def swashdict(path_sc=""):
     """
-    Return dictionary with SWASH output metadata from source code.
+    Return dictionaries with SWASH output metadata from source code.
 
     Args:
         path_sc (str, optional): path of SWASH source code if using developer mode (otherwise it parses SWASH 8.01 online version). Defaults to "".
@@ -14,6 +14,7 @@ def swashdict(path_sc=""):
     Returns:
         swash_dict (dict): dictionary with SWASH output metadata (keyword, name, and units; read from SwashInit.ftn90)
         attr_dict (dict): dictionary with SWASH version metadata
+        out_ind (dict): dictionary with ivtype (SWASH source code number for each keyword output) to type
     """
     def swashunit(init):
         """
@@ -67,7 +68,18 @@ def swashdict(path_sc=""):
                "SWASH version": [i for i in init if "VERNUM" in i][0].strip().split("=")[1]
                }    
 
-    return swash_dict,attr_dict
+    # dict with ivtype (SWASH source code number for each keyword output) to type (sta or ins; no_grid, 2D, ke, or kc) - based on swash-8.01_further
+    # sta is static; ins is instantaneous; no_grid means constant output variables; 2D is twodimensional variable; ke is 3D defined at vertical cell edge, whereas kc is at cell center)
+    out_ind={}
+    out_ind["no_grid"]=list(range(101,114)) # no grid instantaneous
+    out_ind["sta_2D"] = [1,2,3,5,21,22,23,24,25,26,33,34,35,36,37,42,43,44,46]+list(range(149,185))+[193,194]+list(range(201,216))+[217,218]
+    out_ind["ins_2D"] = [4]+list(range(6,21))+list(range(27,33))+list(range(38,42))+[45]+list(range(195,200))+[216]+list(range(249,287))
+    out_ind["sta_ke"] = [57,58,59,185,186]
+    out_ind["ins_ke"] = [51,52,53,54,55,56,189,190]
+    out_ind["sta_kc"] = [84,85,86,87,88,92,93,94,187,188]
+    out_ind["ins_kc"] = list(range(71,84))+[89,90,91,191,192]
+
+    return swash_dict,attr_dict,out_ind
 
 def load_req(path_run,run_file="run.sws"):
     """
@@ -142,15 +154,7 @@ def mat2nc_all(path_run,path_sc="",run_file="run.sws"):
     import numpy as np
     import re
     frame,reqn,nV,reqtable,point=load_req(path_run,run_file=run_file)
-    swash_dict,attr_dict=swashdict(path_sc=path_sc)
-    # ivtype to type - based on swash-8.01_further
-    #no_grid=list(range(101,114)) # no grid instantaneous
-    sta_2D = [1,2,3,5,21,22,23,24,25,26,33,34,35,36,37,42,43,44,46]+list(range(149,185))+[193,194]+list(range(201,216))+[217,218]
-    ins_2D = [4]+list(range(6,21))+list(range(27,33))+list(range(38,42))+[45]+list(range(195,200))+[216]+list(range(249,287))
-    sta_ke = [57,58,59,185,186]
-    ins_ke = [51,52,53,54,55,56,189,190]
-    sta_kc = [84,85,86,87,88,92,93,94,187,188]
-    ins_kc = list(range(71,84))+[89,90,91,191,192]
+    swash_dict,attr_dict,out_ind=swashdict(path_sc=path_sc)
     for req in reqn:
         out={}
         out.update(sio.loadmat(path_run+req[2])) # load mat file
@@ -158,7 +162,7 @@ def mat2nc_all(path_run,path_sc="",run_file="run.sws"):
         # filter based on static/instantaneous 2D/3D quantities - iterate over output request for each grid
         out_sta_2D,out_ins_2D,out_sta_3D,out_ins_3D=\
             [dict(filter(lambda item:re.split('(\d+)',item[0])[0].strip("_") in ([swash_dict[var][3] for var in req[-1] if swash_dict[var][4] in i]),out.items()))
-                    for i in [sta_2D,ins_2D,sta_ke+sta_kc,ins_ke+ins_kc]]
+                    for i in [out_ind["sta_2D"],out_ind["ins_2D"],out_ind["sta_ke"]+out_ind["sta_kc"],out_ind["ins_ke"]+out_ind["ins_kc"]]]
         ds_sta_2D,ds_ins_2D,ds_sta_3D,ds_ins_3D="","","",""
         if out_sta_2D:
             ds_sta_2D=xr.Dataset(
@@ -170,7 +174,7 @@ def mat2nc_all(path_run,path_sc="",run_file="run.sws"):
                         )
         if out_ins_2D:
             ds_ins_2D=[]
-            for var in [i for i in req[-1] if swash_dict[i][4] in ins_2D]: #name of variable 
+            for var in [i for i in req[-1] if swash_dict[i][4] in out_ind["ins_2D"]]: #name of variable 
                 temp=dict(filter(lambda item:item[0].split("_")[0] in swash_dict[var][3],out_ins_2D.items()))
                 ds_ins_2D.append(xr.Dataset(
                             data_vars={swash_dict[var][3]: (("y", "x","t"), (np.stack(list(temp.values()), axis=-1))[::-1],
@@ -185,7 +189,7 @@ def mat2nc_all(path_run,path_sc="",run_file="run.sws"):
             ds_ins_2D=xr.merge(ds_ins_2D)
         if out_sta_3D:
             ds_sta_3D=[]
-            for var in [i for i in req[-1] if swash_dict[i][4] in sta_ke+sta_kc]: #name of variable
+            for var in [i for i in req[-1] if swash_dict[i][4] in out_ind["sta_ke"]+out_ind["sta_kc"]]: #name of variable
                 temp=dict(filter(lambda item:re.split('(\d+)',item[0])[0] in swash_dict[var][3],out_sta_3D.items()))
                 okv_k=[int(re.split('(\d+)',i)[1]) for i in temp.keys()]# k axis
                 ds_sta_3D.append(xr.Dataset(
@@ -199,7 +203,7 @@ def mat2nc_all(path_run,path_sc="",run_file="run.sws"):
             ds_sta_3D=xr.merge(ds_sta_3D)
         if out_ins_3D:
             ds_ins_3D=[]
-            for var in [i for i in req[-1] if swash_dict[i][4] in ins_ke+ins_kc]: #name of variable
+            for var in [i for i in req[-1] if swash_dict[i][4] in out_ind["ins_ke"]+out_ind["ins_kc"]]: #name of variable
                 temp=dict(filter(lambda item:re.split('(\d+)',item[0])[0] in swash_dict[var][3],out_ins_3D.items()))
                 okv_k=list(set([int(re.split('(\d+)',i)[1]) for i in temp.keys()])) # k axis
                 temp=[dict(filter(lambda i:int(i[0].split("_")[1][1:])==k,temp.items())) for k in okv_k]# filter by layer k
@@ -236,6 +240,7 @@ def mat2nc_all(path_run,path_sc="",run_file="run.sws"):
             if 'Xp' in out:
                 ds=ds.assign_coords(x=out['Xp'][0,:])
                 ds.x.attrs = {"standard_name": swash_dict['Xp'][0],"long_name": swash_dict['Xp'][1], "units": swash_dict['Xp'][2],"axis":"X"}         
+        print("Saving "+path_run+f"{req[2][:-4]}.nc")
         ds.to_netcdf(path_run+f"{req[2][:-4]}.nc")
 
 def mat2nc_ins_table(path_run,path_sc="",run_file="run.sws"):
