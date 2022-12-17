@@ -12,13 +12,19 @@ def swashdict(path_sc=""):
         path_sc (str, optional): path of SWASH source code if using developer mode (otherwise it parses SWASH 8.01 online version). Defaults to "".
     
     Returns:
-        swash_dict (dict): dictionary with SWASH output metadata (keyword, name, and units; read from SwashInit.ftn90)
-        attr_dict (dict): dictionary with SWASH version metadata
-        out_ind (dict): dictionary with ivtype (SWASH source code number for each keyword output) to type
+        swash_dict (dict): dictionary with SWASH output metadata (keyword, name, and units; read from SwashInit.ftn90).
+        attr_dict (dict): dictionary with SWASH version metadata.
+        out_ind (dict): dictionary with ivtype (SWASH source code number for each keyword output) to type.
     """
     def swashunit(init):
         """
-        Return dict swash_units (e.g., 'uh' corresponds to m)
+        Return dict swash_units with correspondance between ovunit and units (e.g., 'uh' corresponds to m).
+
+        Args:
+            init(list): list with SwashInit.ftn90 imported into python (with readlines()).
+
+        Returns:
+            swash_unit(dict): dict with correspondance between ovunit and units
         """
         swash_unit={}
         lr=[]
@@ -28,9 +34,9 @@ def swashdict(path_sc=""):
             swash_unit[init[i].split()[0]]=init[i].split("'")[-2]
         return swash_unit
 
-    if path_sc!="":
+    if path_sc!="": # read from local path
         init = open(path_sc+"SwashInit.ftn90","r").readlines()
-    else:
+    else: # read from SWASH official release
         import urllib.request
         import tarfile
         from io import BytesIO
@@ -81,7 +87,7 @@ def swashdict(path_sc=""):
 
     return swash_dict,attr_dict,out_ind
 
-def load_req(path_run,run_file="run.sws"):
+def load_grid_req(path_run,run_file="run.sws"):
     """
     Parse SWASH input file and return relevant information for creating nc files.
 
@@ -92,14 +98,9 @@ def load_req(path_run,run_file="run.sws"):
     Returns:
         frame (list): list with grids (requested with BLOCK command) - id, y, and x
         reqn (list): list with gridded requests - id, type (mean or inst), and list of requested variables
-        nv (int): number of vertical layers
-        reqtable (list): list with table  requests - id, type (mean or inst), and list of requested variables
-        frame (list): list with table points (requested with POI command) - id, y, and x
     """
     import numpy as np
     sws=open(path_run+run_file,"r").readlines()
-    # check nV
-    nV=int([i.split()[1] for i in sws if i[:3]=='VER'][0])
     # Make list with requests (id, type, fname and list of variables)
     req= [i for i in sws if i[:3]=='BLO' and '.mat' in i]
     # req: name, type (mean or inst), list of requested variables
@@ -110,18 +111,39 @@ def load_req(path_run,run_file="run.sws"):
             for i in req]
     # Make list with table requests (id, type, fname and list of variables)
     reqt= [i for i in sws if i[:3]=='TAB' in i]            
-     # reqt: name, type (mean or inst), list of requested variables
-    reqtable = [ [i.split()[1],
-            'inst', # assuming instantaneous variables
-            [j.replace("'","") for j in i.split() if ".tbl" in j][0], # name of .tbl file
-            [i.split("OUT")[0].strip().split() for i in [i.split(".tbl' ")[1] ]][0]] # list of requested variables
-            for i in reqt]
     # Make list with grids (id, y and x)
     fname=[i.split()[1] for i in sws if i[:3]=='FRA'] #frame names
     frame={} # id, y and x
     for f in fname:
         frame[f]=[[np.linspace(float(i.split()[3]),float(i.split()[3])+float(i.split()[6]),int(i.split()[8])+1) for i  in sws if i[:3]=='FRA' and  f==i.split()[1]][0], #y
                             [np.linspace(float(i.split()[2]),float(i.split()[2])+float(i.split()[5]),int(i.split()[7])+1) for i  in sws if i[:3]=='FRA' and  f==i.split()[1]][0]] #x
+    # cgrid for regular grid
+    cgrid={"'COMPGRID'":[np.linspace(float(i.split()[3]),float(i.split()[3])+float(i.split()[6]),int(i.split()[8])+1), #y
+                            np.linspace(float(i.split()[2]),float(i.split()[2])+float(i.split()[5]),int(i.split()[7])+1)]
+                for i in sws if i[:5]=='CGRID' and i.split()[1][:3]=='REG'}
+    if cgrid: frame={**frame,**cgrid}
+    return frame,reqn
+
+def load_table_req(path_run,run_file="run.sws"):
+    """
+    Parse SWASH input file and return relevant information for creating nc files.
+
+    Args:
+        path_run (str): path where run file (*.sws) is located.
+        run_file (str, optional): run file name. Defaults to "run.sws".
+    
+    Returns:
+        reqtable (list): list with table  requests - id, type (mean or inst), and list of requested variables
+        point (list): list with table points (requested with POI command) - id, y, and x
+    """
+    import numpy as np
+    sws=open(path_run+run_file,"r").readlines()
+     # reqt: name, type (mean or inst), list of requested variables
+    reqtable = [ [i.split()[1],
+            'inst', # assuming instantaneous variables
+            [j.replace("'","") for j in i.split() if ".tbl" in j][0], # name of .tbl file
+            [i.split("OUT")[0].strip().split() for i in [i.split(".tbl' ")[1] ]][0]] # list of requested variables
+            for i in reqt]
     # make list with table
     fname=[i.split()[1] for i in sws if i[:3]=='POI'] #point names
     point={} # id, y and x
@@ -133,12 +155,8 @@ def load_req(path_run,run_file="run.sws"):
                 else:
                     with open(path_run+i.split()[2],"r").readlines() as tab:
                         point[f]=[[j.strip().split()[1] for j in tab],[j.strip().split()[0] for j in tab]]
-    # cgrid for regular grid
-    cgrid={"'COMPGRID'":[np.linspace(float(i.split()[3]),float(i.split()[3])+float(i.split()[6]),int(i.split()[8])+1), #y
-                            np.linspace(float(i.split()[2]),float(i.split()[2])+float(i.split()[5]),int(i.split()[7])+1)]
-                for i in sws if i[:5]=='CGRID' and i.split()[1][:3]=='REG'}
-    if cgrid: frame={**frame,**cgrid}
-    return frame,reqn,nV,reqtable,point
+    return reqtable,point
+
 
 def mat2nc_all(path_run,path_sc="",run_file="run.sws"):
     """
@@ -153,7 +171,7 @@ def mat2nc_all(path_run,path_sc="",run_file="run.sws"):
     import xarray as xr
     import numpy as np
     import re
-    frame,reqn,nV,reqtable,point=load_req(path_run,run_file=run_file)
+    frame,reqn=load_grid_req(path_run,run_file=run_file)
     swash_dict,attr_dict,out_ind=swashdict(path_sc=path_sc)
     for req in reqn:
         out={}
@@ -251,8 +269,8 @@ def mat2nc_ins_table(path_run,path_sc="",run_file="run.sws"):
     import scipy.io as sio
     import xarray as xr
     import numpy as np
-    _,_,_,reqtable,point=load_req(path_run,run_file=run_file)
-    swash_dict,attr_dict=swashdict(path_sc=path_sc)
+    reqtable,point=load_table_req(path_run,run_file=run_file)
+    swash_dict,attr_dict,out_ind=swashdict(path_sc=path_sc)
     swash_dict_rev={j[0]:[i]+j[1:] for i,j in swash_dict.items()}
     for tab in reqtable: #name, of grid type (mean or inst), name of tbl, list of requested variables
         out={}
