@@ -174,99 +174,107 @@ def mat2nc_all(path_run,path_sc="",run_file="run.sws",save_nc=False):
     import scipy.io as sio
     import xarray as xr
     import numpy as np
-    import re
+    import re,os
     frame,reqn=load_grid_req(path_run,run_file=run_file)
     swash_dict,attr_dict,out_ind=swashdict(path_sc=path_sc)
     ds_out=[]
     for req in reqn:
-        out={}
-        out.update(sio.loadmat(path_run+req[2])) # load mat file
-        req[-1] = list(map(lambda x: x.replace('HSIG', 'HS'), req[-1]))
-        # filter based on static/instantaneous 2D/3D quantities - iterate over output request for each grid
-        out_sta_2D,out_ins_2D,out_sta_3D,out_ins_3D=\
-            [dict(filter(lambda item:re.split('(\d+)',item[0])[0].strip("_") in ([swash_dict[var][3] for var in req[-1] if swash_dict[var][4] in i]),out.items()))
-                    for i in [out_ind["sta_2D"],out_ind["ins_2D"],out_ind["sta_ke"]+out_ind["sta_kc"],out_ind["ins_ke"]+out_ind["ins_kc"]]]
-        ds_sta_2D,ds_ins_2D,ds_sta_3D,ds_ins_3D="","","",""
-        if out_sta_2D:
-            ds_sta_2D=xr.Dataset(
-                        data_vars={key: (("y", "x"), value[::-1,:],{"standard_name": key,
-                                                                    "long_name": swash_dict.get(key,['']*2)[1],
-                                                                    "units": swash_dict.get(key,['']*3)[2]})
-                                for key,value in out_sta_2D.items() if key not in ('Xp','Yp')},
-                                attrs=attr_dict
-                        )
-        if out_ins_2D:
-            ds_ins_2D=[]
-            for var in [i for i in req[-1] if swash_dict[i][4] in out_ind["ins_2D"]]: #name of variable 
-                temp=dict(filter(lambda item:item[0].split("_")[0] in swash_dict[var][3],out_ins_2D.items()))
-                ds_ins_2D.append(xr.Dataset(
-                            data_vars={swash_dict[var][3]: (("y", "x","t"), (np.stack(list(temp.values()), axis=-1))[::-1],
-                                                                {"standard_name": swash_dict[var][3],
-                                                                "long_name": swash_dict[var][1],
-                                                                "units": swash_dict[var][2]}),
-                                    },
-                            coords={"t": [float(key[-10:-8])*60*60 +float(key[-8:-6])*60 +float(key[-6:-4]) + float(key[-3:])/1000 for key in temp.keys()]
-                                },
-                                attrs=attr_dict
-                            ))
-            ds_ins_2D=xr.merge(ds_ins_2D)
-        if out_sta_3D:
-            ds_sta_3D=[]
-            for var in [i for i in req[-1] if swash_dict[i][4] in out_ind["sta_ke"]+out_ind["sta_kc"]]: #name of variable
-                temp=dict(filter(lambda item:re.split('(\d+)',item[0])[0] in swash_dict[var][3],out_sta_3D.items()))
-                okv_k=[int(re.split('(\d+)',i)[1]) for i in temp.keys()]# k axis
-                ds_sta_3D.append(xr.Dataset(
-                            data_vars={swash_dict[var][3]: (("y", "x",["kc","ke"][okv_k[0]==0]), np.stack(temp.values(),axis=-1)[::-1],
-                                                                        {"standard_name":swash_dict[var][3],
+        if os.path.exists(path_run+req[2]): # check whether matlab file exists
+            if all([swash_dict.get(i) for i in req[-1]]): # check whether all output keywords can be identified
+                out={}
+                out.update(sio.loadmat(path_run+req[2])) # load mat file
+                req[-1] = list(map(lambda x: x.replace('HSIG', 'HS'), req[-1]))
+                # filter based on static/instantaneous 2D/3D quantities - iterate over output request for each grid
+                out_sta_2D,out_ins_2D,out_sta_3D,out_ins_3D=\
+                    [dict(filter(lambda item:re.split('(\d+)',item[0])[0].strip("_") in ([swash_dict[var][3] for var in req[-1] if swash_dict[var][4] in i]),out.items()))
+                            for i in [out_ind["sta_2D"],out_ind["ins_2D"],out_ind["sta_ke"]+out_ind["sta_kc"],out_ind["ins_ke"]+out_ind["ins_kc"]]]
+                ds_sta_2D,ds_ins_2D,ds_sta_3D,ds_ins_3D="","","",""
+                if out_sta_2D:
+                    ds_sta_2D=xr.Dataset(
+                                data_vars={key: (("y", "x"), value[::-1,:],{"standard_name": key,
+                                                                            "long_name": swash_dict.get(key,['']*2)[1],
+                                                                            "units": swash_dict.get(key,['']*3)[2]})
+                                        for key,value in out_sta_2D.items() if key not in ('Xp','Yp')},
+                                        attrs=attr_dict
+                                )
+                if out_ins_2D:
+                    ds_ins_2D=[]
+                    for var in [i for i in req[-1] if swash_dict[i][4] in out_ind["ins_2D"]]: #name of variable 
+                        temp=dict(filter(lambda item:item[0].split("_")[0] in swash_dict[var][3],out_ins_2D.items()))
+                        ds_ins_2D.append(xr.Dataset(
+                                    data_vars={swash_dict[var][3]: (("y", "x","t"), (np.stack(list(temp.values()), axis=-1))[::-1],
+                                                                        {"standard_name": swash_dict[var][3],
                                                                         "long_name": swash_dict[var][1],
-                                                                        "units": swash_dict[var][2]})},
-                            coords={["kc","ke"][okv_k[0]==0]: okv_k},
-                                    attrs=attr_dict
-                                ))
-            ds_sta_3D=xr.merge(ds_sta_3D)
-        if out_ins_3D:
-            ds_ins_3D=[]
-            for var in [i for i in req[-1] if swash_dict[i][4] in out_ind["ins_ke"]+out_ind["ins_kc"]]: #name of variable
-                temp=dict(filter(lambda item:re.split('(\d+)',item[0])[0] in swash_dict[var][3],out_ins_3D.items()))
-                okv_k=list(set([int(re.split('(\d+)',i)[1]) for i in temp.keys()])) # k axis
-                temp=[dict(filter(lambda i:int(i[0].split("_")[1][1:])==k,temp.items())) for k in okv_k]# filter by layer k
-                temp_t=temp.copy() # for time
-                temp=[np.stack(list(i.values()), axis=-1)[::-1] for i in temp] # time stack
-                temp= np.stack([v for v in temp],axis=-2) #layer stack
-                ds_ins_3D.append(xr.Dataset(
-                            data_vars={swash_dict[var][3]: (("y", "x",["kc","ke"][okv_k[0]==0],"t"), temp,
-                                                                        {"standard_name":swash_dict[var][3],
-                                                                        "long_name": swash_dict[var][1],
-                                                                        "units": swash_dict[var][2]})},
-                            coords={["kc","ke"][okv_k[0]==0]: okv_k,
-                                    "t":[float(key[-10:-8])*60*60 +float(key[-8:-6])*60 +float(key[-6:-4]) + float(key[-3:])/1000 for key in temp_t[0].keys()]},
-                                    attrs=attr_dict
-                                ))
-            ds_ins_3D=xr.merge(ds_ins_3D)             
-        ds_m=[j for i,j in zip([out_sta_2D,out_ins_2D,out_sta_3D,out_ins_3D],[ds_sta_2D,ds_ins_2D,ds_sta_3D,ds_ins_3D]) if i]
-        ds=xr.merge(ds_m)
-        if 'kc' in ds:
-            ds.kc.attrs = {"standard_name": 'kc',"long_name": 'Vertical axis (cell centre)', "units": '',"axis":"kc"}
-        if 'ke' in ds:
-            ds.ke.attrs = {"standard_name": 'ke',"long_name": 'Vertical axis (cell edge)', "units": '',"axis":"ke"}
-        if 't' in ds:
-            ds.t.attrs = {"standard_name": swash_dict['TSEC'][0],"long_name": swash_dict['TSEC'][1], "units": swash_dict['TSEC'][2],"axis":"t"}        
-        if req[0] in frame.keys(): # for regular grids
-            ds=ds.assign_coords(y=frame[req[0]][0])
-            ds.y.attrs = {"standard_name": swash_dict['YP'][0],"long_name": swash_dict['YP'][1], "units": swash_dict['YP'][2],"axis":"Y"}
-            ds=ds.assign_coords(x=frame[req[0]][1])
-            ds.x.attrs = {"standard_name": swash_dict['XP'][0],"long_name": swash_dict['XP'][1], "units": swash_dict['XP'][2],"axis":"X"}         
+                                                                        "units": swash_dict[var][2]}),
+                                            },
+                                    coords={"t": [float(key[-10:-8])*60*60 +float(key[-8:-6])*60 +float(key[-6:-4]) + float(key[-3:])/1000 for key in temp.keys()]
+                                        },
+                                        attrs=attr_dict
+                                    ))
+                    ds_ins_2D=xr.merge(ds_ins_2D)
+                if out_sta_3D:
+                    ds_sta_3D=[]
+                    for var in [i for i in req[-1] if swash_dict[i][4] in out_ind["sta_ke"]+out_ind["sta_kc"]]: #name of variable
+                        temp=dict(filter(lambda item:re.split('(\d+)',item[0])[0] in swash_dict[var][3],out_sta_3D.items()))
+                        okv_k=[int(re.split('(\d+)',i)[1]) for i in temp.keys()]# k axis
+                        ds_sta_3D.append(xr.Dataset(
+                                    data_vars={swash_dict[var][3]: (("y", "x",["kc","ke"][okv_k[0]==0]), np.stack(temp.values(),axis=-1)[::-1],
+                                                                                {"standard_name":swash_dict[var][3],
+                                                                                "long_name": swash_dict[var][1],
+                                                                                "units": swash_dict[var][2]})},
+                                    coords={["kc","ke"][okv_k[0]==0]: okv_k},
+                                            attrs=attr_dict
+                                        ))
+                    ds_sta_3D=xr.merge(ds_sta_3D)
+                if out_ins_3D:
+                    ds_ins_3D=[]
+                    for var in [i for i in req[-1] if swash_dict[i][4] in out_ind["ins_ke"]+out_ind["ins_kc"]]: #name of variable
+                        temp=dict(filter(lambda item:re.split('(\d+)',item[0])[0] in swash_dict[var][3],out_ins_3D.items()))
+                        okv_k=list(set([int(re.split('(\d+)',i)[1]) for i in temp.keys()])) # k axis
+                        temp=[dict(filter(lambda i:int(i[0].split("_")[1][1:])==k,temp.items())) for k in okv_k]# filter by layer k
+                        temp_t=temp.copy() # for time
+                        temp=[np.stack(list(i.values()), axis=-1)[::-1] for i in temp] # time stack
+                        temp= np.stack([v for v in temp],axis=-2) #layer stack
+                        ds_ins_3D.append(xr.Dataset(
+                                    data_vars={swash_dict[var][3]: (("y", "x",["kc","ke"][okv_k[0]==0],"t"), temp,
+                                                                                {"standard_name":swash_dict[var][3],
+                                                                                "long_name": swash_dict[var][1],
+                                                                                "units": swash_dict[var][2]})},
+                                    coords={["kc","ke"][okv_k[0]==0]: okv_k,
+                                            "t":[float(key[-10:-8])*60*60 +float(key[-8:-6])*60 +float(key[-6:-4]) + float(key[-3:])/1000 for key in temp_t[0].keys()]},
+                                            attrs=attr_dict
+                                        ))
+                    ds_ins_3D=xr.merge(ds_ins_3D)             
+                ds_m=[j for i,j in zip([out_sta_2D,out_ins_2D,out_sta_3D,out_ins_3D],[ds_sta_2D,ds_ins_2D,ds_sta_3D,ds_ins_3D]) if i]
+                ds=xr.merge(ds_m)
+                if 'kc' in ds:
+                    ds.kc.attrs = {"standard_name": 'kc',"long_name": 'Vertical axis (cell centre)', "units": '',"axis":"kc"}
+                if 'ke' in ds:
+                    ds.ke.attrs = {"standard_name": 'ke',"long_name": 'Vertical axis (cell edge)', "units": '',"axis":"ke"}
+                if 't' in ds:
+                    ds.t.attrs = {"standard_name": swash_dict['TSEC'][0],"long_name": swash_dict['TSEC'][1], "units": swash_dict['TSEC'][2],"axis":"t"}        
+                if req[0] in frame.keys(): # for regular grids
+                    ds=ds.assign_coords(y=frame[req[0]][0])
+                    ds.y.attrs = {"standard_name": swash_dict['YP'][0],"long_name": swash_dict['YP'][1], "units": swash_dict['YP'][2],"axis":"Y"}
+                    ds=ds.assign_coords(x=frame[req[0]][1])
+                    ds.x.attrs = {"standard_name": swash_dict['XP'][0],"long_name": swash_dict['XP'][1], "units": swash_dict['XP'][2],"axis":"X"}         
+                else:
+                    if 'Yp' in out:
+                        ds=ds.assign_coords(y=out['Yp'][:,0][::-1])
+                        ds.y.attrs = {"standard_name": swash_dict['Yp'][0],"long_name": swash_dict['Yp'][1], "units": swash_dict['Yp'][2],"axis":"Y"}
+                    if 'Xp' in out:
+                        ds=ds.assign_coords(x=out['Xp'][0,:])
+                        ds.x.attrs = {"standard_name": swash_dict['Xp'][0],"long_name": swash_dict['Xp'][1], "units": swash_dict['Xp'][2],"axis":"X"}         
+                if save_nc:
+                    print("Saving "+path_run+f"{req[2][:-4]}.nc")
+                    ds.to_netcdf(path_run+f"{req[2][:-4]}.nc")
+                ds_out.append(ds)
+            else:
+                print(f"Warning: output keyword {list(filter(lambda i:not swash_dict.get(i),req[-1]))} does not valid metadata and {path_run+req[2]} has been skipped")
         else:
-            if 'Yp' in out:
-                ds=ds.assign_coords(y=out['Yp'][:,0][::-1])
-                ds.y.attrs = {"standard_name": swash_dict['Yp'][0],"long_name": swash_dict['Yp'][1], "units": swash_dict['Yp'][2],"axis":"Y"}
-            if 'Xp' in out:
-                ds=ds.assign_coords(x=out['Xp'][0,:])
-                ds.x.attrs = {"standard_name": swash_dict['Xp'][0],"long_name": swash_dict['Xp'][1], "units": swash_dict['Xp'][2],"axis":"X"}         
-        if save_nc:
-            print("Saving "+path_run+f"{req[2][:-4]}.nc")
-            ds.to_netcdf(path_run+f"{req[2][:-4]}.nc")
-        ds_out.append(ds)
+            print(f"Warning: {path_run+req[2]} does not exist and has been skipped")
+            continue
+
     return ds_out
 
 def mat2nc_ins_table(path_run,path_sc="",run_file="run.sws"):
