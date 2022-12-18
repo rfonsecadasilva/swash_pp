@@ -158,14 +158,18 @@ def load_table_req(path_run,run_file="run.sws"):
     return reqtable,point
 
 
-def mat2nc_all(path_run,path_sc="",run_file="run.sws"):
+def mat2nc_all(path_run,path_sc="",run_file="run.sws",save_nc=False):
     """
-    Convert all gridded matlab output into nc files
+    Convert all gridded matlab output into nc files and return list with all of them.
 
     Args:
         path_run (str): path where run file (*.sws) is located.
         path_sc (str, optional): path of SWASH source code if using developer mode (otherwise it parses SWASH 8.01 online version). Defaults to "".
-        run_file (str, optional): run file name. Defaults to "run.sws".  
+        run_file (str, optional): run file name. Defaults to "run.sws".
+        save_nc (bool, optional): option to save each nc file. Defaults to True.
+    
+    Returns:
+        ds_out (list): list with xarray datasets for each SWASH matlab output.
     """
     import scipy.io as sio
     import xarray as xr
@@ -173,6 +177,7 @@ def mat2nc_all(path_run,path_sc="",run_file="run.sws"):
     import re
     frame,reqn=load_grid_req(path_run,run_file=run_file)
     swash_dict,attr_dict,out_ind=swashdict(path_sc=path_sc)
+    ds_out=[]
     for req in reqn:
         out={}
         out.update(sio.loadmat(path_run+req[2])) # load mat file
@@ -258,15 +263,17 @@ def mat2nc_all(path_run,path_sc="",run_file="run.sws"):
             if 'Xp' in out:
                 ds=ds.assign_coords(x=out['Xp'][0,:])
                 ds.x.attrs = {"standard_name": swash_dict['Xp'][0],"long_name": swash_dict['Xp'][1], "units": swash_dict['Xp'][2],"axis":"X"}         
-        print("Saving "+path_run+f"{req[2][:-4]}.nc")
-        ds.to_netcdf(path_run+f"{req[2][:-4]}.nc")
+        if save_nc:
+            print("Saving "+path_run+f"{req[2][:-4]}.nc")
+            ds.to_netcdf(path_run+f"{req[2][:-4]}.nc")
+        ds_out.append(ds)
+    return ds_out
 
 def mat2nc_ins_table(path_run,path_sc="",run_file="run.sws"):
     """
     Save nc with dataset instantaneous table (does not work for vector output)
     It saves one netcdf file per line request.
     """
-    import scipy.io as sio
     import xarray as xr
     import numpy as np
     reqtable,point=load_table_req(path_run,run_file=run_file)
