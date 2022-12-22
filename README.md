@@ -16,7 +16,7 @@ pip install -e .
 ### Example of usage for creating and loading nc from SWASH mat files:
 ```
 from swash_pp import swash_mat2nc as snc
-ds=snc.mat2nc_all(path_run="~/run_swash/")
+ds=snc.mat2nc(path_run="~/run_swash/")
 ```
 
 ### Example of usage for creating gif animation with water level from xr data structure ds (including x, Botlev, and Watlev):
