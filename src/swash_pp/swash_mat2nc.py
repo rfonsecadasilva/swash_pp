@@ -54,20 +54,24 @@ def swashdict(path_sc=""):
     while [index for index,value in enumerate(init[lr:]) if "ivtype = " in value]:
         lr+= [index for index,value in enumerate(init[lr:]) if "ivtype = " in value][0]
         ent=[]
-        ent.append(int(init[lr].strip().split("=")[1])) # ivtype
-        lr = [lr+index for index,value in enumerate(init[lr:]) if "ovkeyw" in value][0]
+        ent.append(int(init[lr].strip().split("=")[1])) # ivtype (SWASH number for each output variable), e.g., 5 for BOTLEV
+        lr = [lr+index for index,value in enumerate(init[lr:]) if "ovkeyw" in value][0] # Keyword, e.g., BOTL
         ent.append(init[lr].split("'")[-2])
-        lr = [lr+ index for index,value in enumerate(init[lr:]) if "ovsnam" in value][0]
+        lr = [lr+ index for index,value in enumerate(init[lr:]) if "ovsnam" in value][0] # Short name, e.g., Botlev
         ent.append(init[lr].split("'")[-2])
-        lr = [lr+index for index,value in enumerate(init[lr:]) if "ovlnam" in value][0]
+        lr = [lr+index for index,value in enumerate(init[lr:]) if "ovlnam" in value][0] # Long name, e.g., Bottom level
         ent.append(init[lr].split("'")[-2])
-        lr = [lr+index for index,value in enumerate(init[lr:]) if "ovunit" in value][0]
+        lr = [lr+index for index,value in enumerate(init[lr:]) if "ovunit" in value][0] # SWASH unit (to be converted), e.g., uh (for m)
         ent.append(init[lr].split()[-1])
-        swash_dict[ent[1]]=[ent[1],ent[3],ent[4],ent[2],ent[0]]
+        lr = [lr+index for index,value in enumerate(init[lr:]) if "ovsvty" in value][0] # Type of variable, e.g., 1 for scalar, 2 for angle, 3 vector, 4 tensor
+        ent.append(int(init[lr].split()[-1]))        
+        #swash_dict[ent[1]]=[ent[1],ent[3],ent[4],ent[2],ent[0],ent[5]] #
+        swash_dict[ent[2]]=[ent[1],ent[3],ent[4],ent[0],ent[5]] # key is short name, list has: 0 Keyword 1 Long name 2 SWASH Units 3 Ivtype 4 Type of var
     
+    # translate SWASH untis (e.g., uh) to real units (e.g., m)
     swash_unit = swashunit(init)
     for value in swash_dict.values():
-        if value[2] in swash_unit: value[2]=swash_unit[value[2]] # better than get, as string sometimes does not translate into acronym
+        if value[2] in swash_unit: value[2]=swash_unit[value[2]]
 
     attr_dict={"title": "SWASH output",
                "description": "SWASH output converted from series of mat files",
@@ -77,14 +81,19 @@ def swashdict(path_sc=""):
     # dict with ivtype (SWASH source code number for each keyword output) to type (sta or ins; no_grid, 2D, ke, or kc) - based on swash-8.01_further
     # sta is static; ins is instantaneous; no_grid means constant output variables; 2D is twodimensional variable; ke is 3D defined at vertical cell edge, whereas kc is at cell center)
     out_ind={}
-    out_ind["no_grid"]=list(range(101,114)) # no grid instantaneous
+    out_ind["no_grid"]=[40,41] + list(range(101,114)) # no grid instantaneous
     out_ind["sta_2D"] = [1,2,3,5,21,22,23,24,25,26,33,34,35,36,37,42,43,44,46]+list(range(149,185))+[193,194]+list(range(201,216))+[217,218]
-    out_ind["ins_2D"] = [4]+list(range(6,21))+list(range(27,33))+list(range(38,42))+[45]+list(range(195,200))+[216]+list(range(249,287))
+    out_ind["ins_2D"] = [4]+list(range(6,21))+list(range(27,33))+list(range(38,40))+[45]+list(range(195,200))+[216]+list(range(249,287))
     out_ind["sta_ke"] = [57,58,59,185,186]
     out_ind["ins_ke"] = [51,52,53,54,55,56,189,190]
     out_ind["sta_kc"] = [84,85,86,87,88,92,93,94,187,188]
     out_ind["ins_kc"] = list(range(71,84))+[89,90,91,191,192]
 
+    # append dict for vector units
+    for key,value in swash_dict.copy().items():
+        if value[4]==3: #vector
+            swash_dict["X-"+key]=["X-"+value[0]] + [value[1]+ " - x-component"] + value[2:]
+            swash_dict["Y-"+key]=["Y-"+value[0]] + [value[1]+ " - y-component"] + value[2:]
     return swash_dict,attr_dict,out_ind
 
 def load_grid_req(path_run,run_file="run.sws"):
@@ -133,11 +142,15 @@ def load_table_req(path_run,run_file="run.sws"):
         run_file (str, optional): run file name. Defaults to "run.sws".
     
     Returns:
-        reqtable (list): list with table  requests - id, type (mean or inst), and list of requested variables
-        point (list): list with table points (requested with POI command) - id, y, and x
+        reqtable (list): list with table  requests - id, type (mean or inst), and list of requested variables.
+        point (list): list with table points (requested with POI command) - id, y, and x.
+        nV (int): number of vertical layers.
     """
     import numpy as np
     sws=open(path_run+run_file,"r").readlines()
+    nV=int([i.split()[1] for i in sws if i[:3]=='VER'][0]) # number of vertical layers
+    # Make list with table requests (id, type, fname and list of variables)
+    reqt= [i for i in sws if i[:3]=='TAB' in i]         
      # reqt: name, type (mean or inst), list of requested variables
     reqtable = [ [i.split()[1],
             'inst', # assuming instantaneous variables
@@ -153,14 +166,15 @@ def load_table_req(path_run,run_file="run.sws"):
                 if i.split()[2][0].isdigit():
                     point[f]=[[float(j) for j in i.split()[3:][::2]],[float(j) for j in i.split()[2:][::2]]]
                 else:
-                    with open(path_run+i.split()[2],"r").readlines() as tab:
+                    with open(path_run+i.split()[3][1:-1],"r") as file:
+                        tab=file.readlines()
                         point[f]=[[j.strip().split()[1] for j in tab],[j.strip().split()[0] for j in tab]]
-    return reqtable,point
+    return reqtable,point,nV
 
 
-def mat2nc_all(path_run,path_sc="",run_file="run.sws",save_nc=False):
+def mat2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
     """
-    Convert all gridded matlab output into nc files and return list with all of them.
+    Convert all gridded matlab output into xr dataset and return list with all of them.
 
     Args:
         path_run (str): path where run file (*.sws) is located.
@@ -179,31 +193,33 @@ def mat2nc_all(path_run,path_sc="",run_file="run.sws",save_nc=False):
     swash_dict,attr_dict,out_ind=swashdict(path_sc=path_sc)
     ds_out=[]
     for req in reqn:
+        req[-1] = list(map(lambda x: x.replace('HSIG', 'HS'), req[-1]))
         if os.path.exists(path_run+req[2]): # check whether matlab file exists
-            if all([swash_dict.get(i) for i in req[-1]]): # check whether all output keywords can be identified
+            if all([i in [j[0] for j in swash_dict.values()] for i in req[-1]]): # check whether all output keywords can be identified
                 out={}
                 out.update(sio.loadmat(path_run+req[2])) # load mat file
-                req[-1] = list(map(lambda x: x.replace('HSIG', 'HS'), req[-1]))
+                # for vector quantities, create X- and Y- at the start of keys (consistent with swash_dict)
+                out={(i if all([j not in i for j in ["_x","_y"]]) else "X-"+i.replace("_x","") if "_x" in i else "Y-"+i.replace("_y","")):j  for i,j in out.items()}
                 # filter based on static/instantaneous 2D/3D quantities - iterate over output request for each grid
                 out_sta_2D,out_ins_2D,out_sta_3D,out_ins_3D=\
-                    [dict(filter(lambda item:re.split('(\d+)',item[0])[0].strip("_") in ([swash_dict[var][3] for var in req[-1] if swash_dict[var][4] in i]),out.items()))
+                    [dict(filter(lambda item:swash_dict.get(re.split('(\d+)',item[0])[0].strip("_"),[""]*4)[3] in i,out.items()))
                             for i in [out_ind["sta_2D"],out_ind["ins_2D"],out_ind["sta_ke"]+out_ind["sta_kc"],out_ind["ins_ke"]+out_ind["ins_kc"]]]
                 ds_sta_2D,ds_ins_2D,ds_sta_3D,ds_ins_3D="","","",""
                 if out_sta_2D:
                     ds_sta_2D=xr.Dataset(
                                 data_vars={key: (("y", "x"), value[::-1,:],{"standard_name": key,
-                                                                            "long_name": swash_dict.get(key,['']*2)[1],
-                                                                            "units": swash_dict.get(key,['']*3)[2]})
+                                                                            "long_name": swash_dict[key][1],
+                                                                            "units":swash_dict[key][2]})
                                         for key,value in out_sta_2D.items() if key not in ('Xp','Yp')},
                                         attrs=attr_dict
                                 )
                 if out_ins_2D:
                     ds_ins_2D=[]
-                    for var in [i for i in req[-1] if swash_dict[i][4] in out_ind["ins_2D"]]: #name of variable 
-                        temp=dict(filter(lambda item:item[0].split("_")[0] in swash_dict[var][3],out_ins_2D.items()))
+                    for var in list(set([re.split('(\d+)',i)[0].strip("_") for i in out_ins_2D.keys()])): #name of variable 
+                        temp=dict(filter(lambda item:item[0].split("_")[0] == var,out_ins_2D.items()))
                         ds_ins_2D.append(xr.Dataset(
-                                    data_vars={swash_dict[var][3]: (("y", "x","t"), (np.stack(list(temp.values()), axis=-1))[::-1],
-                                                                        {"standard_name": swash_dict[var][3],
+                                    data_vars={var: (("y", "x","t"), (np.stack(list(temp.values()), axis=-1))[::-1],
+                                                                        {"standard_name": var,
                                                                         "long_name": swash_dict[var][1],
                                                                         "units": swash_dict[var][2]}),
                                             },
@@ -214,12 +230,12 @@ def mat2nc_all(path_run,path_sc="",run_file="run.sws",save_nc=False):
                     ds_ins_2D=xr.merge(ds_ins_2D)
                 if out_sta_3D:
                     ds_sta_3D=[]
-                    for var in [i for i in req[-1] if swash_dict[i][4] in out_ind["sta_ke"]+out_ind["sta_kc"]]: #name of variable
-                        temp=dict(filter(lambda item:re.split('(\d+)',item[0])[0] in swash_dict[var][3],out_sta_3D.items()))
+                    for var in list(set([re.split('(\d+)',i)[0].strip("_") for i in out_sta_3D.keys()])): #name of variable
+                        temp=dict(filter(lambda item:re.split('(\d+)',item[0])[0] == var,out_sta_3D.items()))
                         okv_k=[int(re.split('(\d+)',i)[1]) for i in temp.keys()]# k axis
                         ds_sta_3D.append(xr.Dataset(
-                                    data_vars={swash_dict[var][3]: (("y", "x",["kc","ke"][okv_k[0]==0]), np.stack(temp.values(),axis=-1)[::-1],
-                                                                                {"standard_name":swash_dict[var][3],
+                                    data_vars={var: (("y", "x",["kc","ke"][okv_k[0]==0]), np.stack(temp.values(),axis=-1)[::-1],
+                                                                                {"standard_name":var,
                                                                                 "long_name": swash_dict[var][1],
                                                                                 "units": swash_dict[var][2]})},
                                     coords={["kc","ke"][okv_k[0]==0]: okv_k},
@@ -228,16 +244,16 @@ def mat2nc_all(path_run,path_sc="",run_file="run.sws",save_nc=False):
                     ds_sta_3D=xr.merge(ds_sta_3D)
                 if out_ins_3D:
                     ds_ins_3D=[]
-                    for var in [i for i in req[-1] if swash_dict[i][4] in out_ind["ins_ke"]+out_ind["ins_kc"]]: #name of variable
-                        temp=dict(filter(lambda item:re.split('(\d+)',item[0])[0] in swash_dict[var][3],out_ins_3D.items()))
+                    for var in list(set([re.split('(\d+)',i)[0].strip("_") for i in out_ins_3D.keys()])): #name of variable
+                        temp=dict(filter(lambda item:re.split('(\d+)',item[0])[0] == var,out_ins_3D.items()))
                         okv_k=list(set([int(re.split('(\d+)',i)[1]) for i in temp.keys()])) # k axis
                         temp=[dict(filter(lambda i:int(i[0].split("_")[1][1:])==k,temp.items())) for k in okv_k]# filter by layer k
                         temp_t=temp.copy() # for time
                         temp=[np.stack(list(i.values()), axis=-1)[::-1] for i in temp] # time stack
                         temp= np.stack([v for v in temp],axis=-2) #layer stack
                         ds_ins_3D.append(xr.Dataset(
-                                    data_vars={swash_dict[var][3]: (("y", "x",["kc","ke"][okv_k[0]==0],"t"), temp,
-                                                                                {"standard_name":swash_dict[var][3],
+                                    data_vars={var: (("y", "x",["kc","ke"][okv_k[0]==0],"t"), temp,
+                                                                                {"standard_name":var,
                                                                                 "long_name": swash_dict[var][1],
                                                                                 "units": swash_dict[var][2]})},
                                     coords={["kc","ke"][okv_k[0]==0]: okv_k,
@@ -252,98 +268,141 @@ def mat2nc_all(path_run,path_sc="",run_file="run.sws",save_nc=False):
                 if 'ke' in ds:
                     ds.ke.attrs = {"standard_name": 'ke',"long_name": 'Vertical axis (cell edge)', "units": '',"axis":"ke"}
                 if 't' in ds:
-                    ds.t.attrs = {"standard_name": swash_dict['TSEC'][0],"long_name": swash_dict['TSEC'][1], "units": swash_dict['TSEC'][2],"axis":"t"}        
+                    ds.t.attrs = {"standard_name": 'Tsec',"long_name": swash_dict['Tsec'][1], "units": swash_dict['Tsec'][2],"axis":"t"}        
                 if req[0] in frame.keys(): # for regular grids
                     ds=ds.assign_coords(y=frame[req[0]][0])
-                    ds.y.attrs = {"standard_name": swash_dict['YP'][0],"long_name": swash_dict['YP'][1], "units": swash_dict['YP'][2],"axis":"Y"}
+                    ds.y.attrs = {"standard_name": "Yp","long_name": swash_dict['Yp'][1], "units": swash_dict['Yp'][2],"axis":"Y"}
                     ds=ds.assign_coords(x=frame[req[0]][1])
-                    ds.x.attrs = {"standard_name": swash_dict['XP'][0],"long_name": swash_dict['XP'][1], "units": swash_dict['XP'][2],"axis":"X"}         
+                    ds.x.attrs = {"standard_name": "Xp","long_name": swash_dict['Xp'][1], "units": swash_dict['Xp'][2],"axis":"X"}         
                 else:
                     if 'Yp' in out:
                         ds=ds.assign_coords(y=out['Yp'][:,0][::-1])
-                        ds.y.attrs = {"standard_name": swash_dict['Yp'][0],"long_name": swash_dict['Yp'][1], "units": swash_dict['Yp'][2],"axis":"Y"}
+                        ds.y.attrs = {"standard_name": "Yp","long_name": swash_dict['Yp'][1], "units": swash_dict['Yp'][2],"axis":"Y"}
                     if 'Xp' in out:
                         ds=ds.assign_coords(x=out['Xp'][0,:])
-                        ds.x.attrs = {"standard_name": swash_dict['Xp'][0],"long_name": swash_dict['Xp'][1], "units": swash_dict['Xp'][2],"axis":"X"}         
+                        ds.x.attrs = {"standard_name": "Xp","long_name": swash_dict['Xp'][1], "units": swash_dict['Xp'][2],"axis":"X"}         
                 if save_nc:
                     print("Saving "+path_run+f"{req[2][:-4]}.nc")
                     ds.to_netcdf(path_run+f"{req[2][:-4]}.nc")
                 ds_out.append(ds)
             else:
-                print(f"Warning: output keyword {list(filter(lambda i:not swash_dict.get(i),req[-1]))} does not valid metadata and {path_run+req[2]} has been skipped")
+                print(f"Warning: output keyword {[i for i in req[-1] if i not in [j[0] for j in swash_dict.values()]]} does not valid metadata and {path_run+req[2]} has been skipped")
         else:
             print(f"Warning: {path_run+req[2]} does not exist and has been skipped")
             continue
 
     return ds_out
 
-def mat2nc_ins_table(path_run,path_sc="",run_file="run.sws"):
+def tab2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
     """
-    Save nc with dataset instantaneous table (does not work for vector output)
-    It saves one netcdf file per line request.
+    Convert all table output into xr dataset and return list with all of them.
+
+    Args:
+        path_run (str): path where run file (*.sws) is located.
+        path_sc (str, optional): path of SWASH source code if using developer mode (otherwise it parses SWASH 8.01 online version). Defaults to "".
+        run_file (str, optional): run file name. Defaults to "run.sws".
+        save_nc (bool, optional): option to save each nc file. Defaults to True.
+    
+    Returns:
+        ds_out (list): list with xarray datasets for each SWASH table output.    
     """
     import xarray as xr
     import numpy as np
-    reqtable,point=load_table_req(path_run,run_file=run_file)
+    import os
+    def custom_index(first_index,chunk,skip,length):
+        """Retrieve custom indexing.
+
+        Args:
+            first_index (int): first index of np array.
+            second_index (int): chunk length.
+            skip (int): skip.
+            length (int): length of np array.
+
+        Returns:
+            out (np array): np array with custom indexes.
+        """
+        return np.concatenate([range(j,j+chunk) for j in range(first_index,len(file),skip)])
+
+    reqtable,point,nV=load_table_req(path_run,run_file=run_file)
     swash_dict,attr_dict,out_ind=swashdict(path_sc=path_sc)
-    swash_dict_rev={j[0]:[i]+j[1:] for i,j in swash_dict.items()}
+    swash_dict={value[0]:[key]+value[1:] for key,value in swash_dict.items()}
+    ds_out=[]
     for tab in reqtable: #name, of grid type (mean or inst), name of tbl, list of requested variables
-        out={}
-        if  open(path_run+tab[2]).readlines()[0][:5]!="SWASH": # no header 
-            for idx,var in enumerate(tab[3]):
-                out[var]= np.transpose(np.reshape(np.array([float(j[idx]) for j in [i.strip().split()
-                    for i in open(path_run+tab[2]).readlines()]]),
-                    (len(open(path_run+tab[2]).readlines())//
-                    len(point[tab[0]][0]),len(point[tab[0]][0])))) # station,time
-        else: # with header --> reads number of dimensions in vertical for each variable
-            ndim=[int(i) for i in [i.split()[0] for i in open(path_run+tab[2]).readlines()][8:8+4*(len(tab[-1])-1)+1][::4]]
-            outarray=np.concatenate([[float(k) for k in j.strip().split()] for j in open(path_run+tab[2]).readlines()[8+4*(len(tab[-1])-1)+2:]]) # one line
-            outlist=[]
-            for idx,var in enumerate(tab[3]): # parse into text file and append list for each variable
-                outlist.append([])
-                i=0
-                for j in range(idx): i+=ndim[j]
-                while i<len(outarray):
-                    for j in range(ndim[idx]):
-                        outlist[idx].append(outarray[i])
-                        i+=1
-                    i+=int(np.dot(ndim,np.ones(len(ndim)))-ndim[idx])
-                if ndim[idx]==1:
-                    out[var]=np.transpose(np.reshape(np.array(outlist[idx]),(len(outlist[idx])//len(point[tab[0]][0]),len(point[tab[0]][0]))))
-                else:
-                    out[var]=np.transpose(np.reshape(np.array(outlist[idx]),(len(outlist[idx])//len(point[tab[0]][0])//ndim[idx],len(point[tab[0]][0]),ndim[idx])),(1,0,2))
-        
-        var_2D = [i for i,j in zip(tab[-1],ndim) if j==1]
-        ds_2D=xr.Dataset(
-                    data_vars={swash_dict_rev.get(key,[''])[0]: (("stations", "time"), value,{"standard_name": swash_dict_rev.get(key,[''])[0],
-                                                                "long_name": swash_dict_rev.get(key,['']*2)[1],
-                                                                "units": swash_dict_rev.get(key,['']*3)[2]})
-                            for key,value in out.items() if key in var_2D},
-                            attrs=attr_dict
-                    )
-        ds_3D=xr.Dataset(
-                    data_vars={swash_dict_rev.get(key,[''])[0]: (("stations","time","k"), value,{"standard_name": swash_dict_rev.get(key,[''])[0],
-                                                                "long_name": swash_dict_rev.get(key,['']*2)[1],
-                                                                "units": swash_dict_rev.get(key,['']*3)[2]})
-                            for key,value in out.items() if key not in ('XP','YP','TIME','TSEC')
-                                                            and key not in var_2D},
-                            attrs=attr_dict
-                    )
-        ds=xr.merge([ds_2D,ds_3D])
-        if 'TIME' in out.keys():
-            t="Time"
-            ds=ds.assign_coords(time=out["TIME"][0,:])
-            ds.time.attrs = {"standard_name": swash_dict[t][0],"long_name": swash_dict[t][1], "units": swash_dict[t][2],"axis":"time"}
-        elif 'TSEC' in out:
-            t="Tsec"
-            ds=ds.assign_coords(time=out["TSEC"][0,:])
-            ds.time.attrs = {"standard_name": swash_dict[t][0],"long_name": swash_dict[t][1], "units": swash_dict[t][2],"axis":"time"}
-        ds['station_y']=(("stations"),point[tab[0]][0])
-        ds['station_x']=(("stations"),point[tab[0]][1])
-        ds.station_y.attrs = {"standard_name": swash_dict['Yp'][0],"long_name": swash_dict['Yp'][1], "units": swash_dict['Yp'][2],"axis":"Y"}
-        ds.station_x.attrs = {"standard_name": swash_dict['Xp'][0],"long_name": swash_dict['Xp'][1], "units": swash_dict['Xp'][2],"axis":"X"}    
-        print(f"Saving ins 2D table {tab[2].split('.')[0]}.nc")
-        ds.to_netcdf(path_run+f"{tab[2].split('.')[0]}.nc")
+        if os.path.exists(path_run+tab[2]): # check whether table file exists
+            if all([i in swash_dict.keys() for i in tab[-1]]): # check whether all output keywords can be identified
+                # modify tab to account for vectors
+                tab_rev=[]
+                [tab_rev.append(i) if swash_dict[i][4] <3 else (tab_rev.append("X-"+i),tab_rev.append("Y-"+i))  for i in tab[-1]]
+                # initiate xr dataset
+                ds=[]
+                # load file
+                file=[i.strip() for i in open(path_run+tab[2]).readlines()]
+                if file[0][0]=="S": file=file[6+4*(len(tab_rev)):] # condition for files starting with "SWASH   1" ..." (most likely files with one variable with vertical components)
+                file=np.concatenate([[float(k) for k in j.split()] for j in file]) # one line with all values
+                # 2D files are output at same line whereas if any 3D each output is given at a different line
+                ndim=[nV+1 if swash_dict[i][3] in out_ind["sta_ke"]+out_ind["ins_ke"] else nV if swash_dict[i][3] in out_ind["sta_kc"]+out_ind["ins_kc"] else 1 for i in tab_rev]
+                # initiate dict that will contain the whole dataset
+                out={}
+                for i in range(len(tab_rev)): # iterave over each keyword requested
+                    out[swash_dict[tab_rev[i]][0]]=file[custom_index(sum(ndim[:i]),ndim[i],int(np.dot(ndim,np.ones(len(ndim)))),len(file))]
+                    if ndim[i]==1: # reshape into station and time
+                        if tab[0] != "'NOGRID'":
+                            out[swash_dict[tab_rev[i]][0]]=out[swash_dict[tab_rev[i]][0]].reshape((len(point[tab[0]][0]),len(out[swash_dict[tab_rev[i]][0]])//len(point[tab[0]][0])))
+                            if swash_dict[tab_rev[i]][0] not in ["Time","Tsec"]: # exclude time as it consists of a coordinate (see below)
+                                ds.append(xr.Dataset(
+                                    data_vars={swash_dict[tab_rev[i]][0]: (("stations", "time"), out[swash_dict[tab_rev[i]][0]],
+                                                                                {"standard_name": swash_dict[tab_rev[i]][0],
+                                                                                "long_name": swash_dict[tab_rev[i]][1],
+                                                                                "units": swash_dict[tab_rev[i]][2]})
+                                            },
+                                            attrs=attr_dict
+                                            ))
+                        else:
+                            if swash_dict[tab_rev[i]][0] not in ["Time","Tsec"]:
+                                ds.append(xr.Dataset(
+                                    data_vars={swash_dict[tab_rev[i]][0]: (("time"), out[swash_dict[tab_rev[i]][0]],
+                                                                                {"standard_name": swash_dict[tab_rev[i]][0],
+                                                                                "long_name": swash_dict[tab_rev[i]][1],
+                                                                                "units": swash_dict[tab_rev[i]][2]})
+                                            },
+                                            attrs=attr_dict
+                                            ))                            
+                    else: # reshape into station, time and k
+                        out[swash_dict[tab_rev[i]][0]]=out[swash_dict[tab_rev[i]][0]].reshape((len(point[tab[0]][0]),len(out[swash_dict[tab_rev[i]][0]])//len(point[tab[0]][0])//ndim[i],ndim[i]))
+                        ds.append(xr.Dataset(
+                                    data_vars={swash_dict[tab_rev[i]][0]: (("stations","time",["kc","ke"][swash_dict[tab_rev[i]][3] in out_ind["sta_ke"]+out_ind["ins_ke"]]), out[swash_dict[tab_rev[i]][0]],
+                                                                                {"standard_name": swash_dict[tab_rev[i]][0],
+                                                                                "long_name": swash_dict[tab_rev[i]][1],
+                                                                                "units": swash_dict[tab_rev[i]][2]})
+                                            },
+                                            attrs=attr_dict
+                                        ))
+                ds=xr.merge(ds)
+                if 'Time' in out.keys():
+                    t="Time"
+                    if tab[0] != "'NOGRID'": ds=ds.assign_coords(time=out[t][0,:])
+                    else: ds=ds.assign_coords(time=out[t][:])
+                    ds.time.attrs = {"standard_name": t,"long_name": swash_dict['TIME'][1], "units": swash_dict["TIME"][2],"axis":"time"}
+                elif 'Tsec' in out:
+                    t="Tsec"
+                    if tab[0] != "'NOGRID'": ds=ds.assign_coords(time=out[t][0,:])
+                    else: ds=ds.assign_coords(time=out[t][:])
+                    ds.time.attrs = {"standard_name": t,"long_name": swash_dict["TSEC"][1], "units": swash_dict["TSEC"][2],"axis":"time"}
+                if tab[0] != "'NOGRID'":
+                    ds['station_y']=(("stations"),point[tab[0]][0])
+                    ds['station_x']=(("stations"),point[tab[0]][1])
+                    ds.station_y.attrs = {"standard_name": swash_dict['YP'][0],"long_name": swash_dict['YP'][1], "units": swash_dict['YP'][2],"axis":"Y"}
+                    ds.station_x.attrs = {"standard_name": swash_dict['XP'][0],"long_name": swash_dict['XP'][1], "units": swash_dict['XP'][2],"axis":"X"}    
+                if save_nc:
+                    print("Saving "+path_run+f"{tab[2][:-4]}.nc")
+                    ds.to_netcdf(path_run+f"{tab[2][:-4]}.nc")
+                ds_out.append(ds)
+            else:
+                print(f"Warning: output keyword {[i for i in tab[-1] if i not in swash_dict.keys()]} does not valid metadata and {path_run+tab[2]} has been skipped")
+        else:
+            print(f"Warning: {path_run+tab[2]} does not exist and has been skipped")
+            continue
+    return ds_out
 
 if __name__ == '__main__':
     pass
