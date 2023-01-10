@@ -168,7 +168,7 @@ def load_table_req(path_run,run_file="run.sws"):
                 else:
                     with open(path_run+i.split()[3][1:-1],"r") as file:
                         tab=file.readlines()
-                        point[f]=[[j.strip().split()[1] for j in tab],[j.strip().split()[0] for j in tab]]
+                        point[f]=[[float(j.strip().split()[1]) for j in tab],[float(j.strip().split()[0]) for j in tab]]
     return reqtable,point,nV
 
 
