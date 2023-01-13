@@ -44,7 +44,7 @@ def swashdict(path_sc=""):
         tmpfile.write(urllib.request.urlopen("https://swash.sourceforge.io/download/zip/swash-8.01.tar.gz").read())
         tmpfile.seek(0)
         tfile = tarfile.open(fileobj=tmpfile, mode="r:gz")
-        init=tfile.extractfile('swash/SwashInit.ftn90').readlines()
+        init=tfile.extractfile('swash-8.01/SwashInit.ftn90').readlines()
         tmpfile.close()
         tfile.close()
         init=[i.decode('UTF-8') for i in init]
@@ -116,21 +116,24 @@ def load_grid_req(path_run,run_file="run.sws"):
     reqn = [ [i.split()[1],
             ['mean','inst']['OUT' in i], # mean and instantaneous variables
             [j.replace("'","") for j in i.split() if ".mat" in j][0], # name of .mat file
-            [i.split("OUT")[0].strip().split() for i in [i.split(".mat' ")[1] ]][0]] # list of requested variables
+            [j for j in [i.split("OUT")[0].strip().split() for i in [i.split(".mat' ")[1] ]][0] if not j.isnumeric and "LAY" not in j]] # list of requested variables
             for i in req]
-    # Make list with table requests (id, type, fname and list of variables)
-    reqt= [i for i in sws if i[:3]=='TAB' in i]            
     # Make list with grids (id, y and x)
     fname=[i.split()[1] for i in sws if i[:3]=='FRA'] #frame names
     frame={} # id, y and x
     for f in fname:
         frame[f]=[[np.linspace(float(i.split()[3]),float(i.split()[3])+float(i.split()[6]),int(i.split()[8])+1) for i  in sws if i[:3]=='FRA' and  f==i.split()[1]][0], #y
                             [np.linspace(float(i.split()[2]),float(i.split()[2])+float(i.split()[5]),int(i.split()[7])+1) for i  in sws if i[:3]=='FRA' and  f==i.split()[1]][0]] #x
-    # cgrid for regular grid
-    cgrid={"'COMPGRID'":[np.linspace(float(i.split()[3]),float(i.split()[3])+float(i.split()[6]),int(i.split()[8])+1), #y
-                            np.linspace(float(i.split()[2]),float(i.split()[2])+float(i.split()[5]),int(i.split()[7])+1)]
-                for i in sws if i[:5]=='CGRID' and i.split()[1][:3]=='REG'}
-    if cgrid: frame={**frame,**cgrid}
+    # extract compgrid if regular grid
+    for i in sws:
+        if i[:5]=='CGRID' and "CURV" not in i and "UNSTRUC" not in i:
+            first_index=1
+            if "REG" in i: first_index+=1
+            cgrid={"'COMPGRID'":[np.linspace(float(i.split()[first_index+1]),float(i.split()[first_index+1])+float(i.split()[first_index+4]),int(i.split()[first_index+6])+1), #y
+                                 np.linspace(float(i.split()[first_index]),float(i.split()[first_index])+float(i.split()[first_index+3]),int(i.split()[first_index+5])+1)]
+                  }
+            frame={**frame,**cgrid}
+            break
     return frame,reqn
 
 def load_table_req(path_run,run_file="run.sws"):
@@ -147,30 +150,43 @@ def load_table_req(path_run,run_file="run.sws"):
         nV (int): number of vertical layers.
     """
     import numpy as np
-    sws=open(path_run+run_file,"r").readlines()
-    nV=int([i.split()[1] for i in sws if i[:3]=='VER'][0]) # number of vertical layers
+    sws=[i for i in open(path_run+run_file,"r").readlines() if i[0]!="$"]
+    nV=max(list(set([int(i.split()[1]) if i[:3]=='VER' else 1 for i in sws]))) # number of vertical layers
+    mode = sorted(list(set(["ONED" if i[:]=='MODE' and "ONED" in i else "TWOD" for i in sws])))[0] # extract mode
     # Make list with table requests (id, type, fname and list of variables)
     reqt= [i for i in sws if i[:3]=='TAB' in i]         
      # reqt: name, type (mean or inst), list of requested variables
     reqtable = [ [i.split()[1],
-            'inst', # assuming instantaneous variables
-            [j.replace("'","") for j in i.split() if ".tbl" in j][0], # name of .tbl file
-            [i.split("OUT")[0].strip().split() for i in [i.split(".tbl' ")[1] ]][0]] # list of requested variables
+            ['mean','inst']['OUT' in i], # mean and instantaneous variables
+            [j.replace("'","") for j in i.split() if i.split(".")[1].split()[0][:-1] in j][0], # name of table file
+            [i for i in i.split(".")[1].split()[1:] if i!="OUT"]] # list of requested variables
             for i in reqt]
     # make list with table
-    fname=[i.split()[1] for i in sws if i[:3]=='POI'] #point names
+    fname=[i.split()[1] for i in sws if i[:3]=='POI' or i[:3]=='FRA'] #point names (note that table can also use grids)
     point={} # id, y and x
     for f in fname:
         for i in sws:
-            if i[:3]=='POI' and f==i.split()[1]:
+            if (i[:3]=='POI') and (f==i.split()[1]):
                 if i.split()[2][0].isdigit():
                     point[f]=[[float(j) for j in i.split()[3:][::2]],[float(j) for j in i.split()[2:][::2]]]
                 else:
                     with open(path_run+i.split()[3][1:-1],"r") as file:
                         tab=file.readlines()
                         point[f]=[[float(j.strip().split()[1]) for j in tab],[float(j.strip().split()[0]) for j in tab]]
+            elif (i[:3]=='FRA') and (f==i.split()[1]):
+                point[f]=[np.linspace(float(i.split()[3]),float(i.split()[3])+float(i.split()[6]),int(i.split()[8])+1), #y,
+                          np.linspace(float(i.split()[2]),float(i.split()[2])+float(i.split()[5]),int(i.split()[7])+1)]
+    # extract compgrid if regular grid
+    for i in sws:
+        if i[:5]=='CGRID' and "CURV" not in i and "UNSTRUC" not in i:
+            first_index=1
+            if "REG" in i: first_index+=1
+            cgrid={"'COMPGRID'":[np.linspace(float(i.split()[first_index+1]),float(i.split()[first_index+1])+float(i.split()[first_index+4]),int(i.split()[first_index+6])+1), #y
+                                 np.linspace(float(i.split()[first_index]),float(i.split()[first_index])+float(i.split()[first_index+3]),int(i.split()[first_index+5])+1)]
+                  }
+            point={**point,**cgrid}
+            break
     return reqtable,point,nV
-
 
 def mat2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
     """
@@ -337,17 +353,24 @@ def tab2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
                 ds=[]
                 # load file
                 file=[i.strip() for i in open(path_run+tab[2]).readlines()]
-                if file[0][0]=="S": file=file[6+4*(len(tab_rev)):] # condition for files starting with "SWASH   1" ..." (most likely files with one variable with vertical components)
+                if file[0][0]=="S": # condition for files starting with "SWASH   1" ..." (most likely files with one variable with vertical components)
+                    file=file[6+4*(len(tab_rev)):] 
+                else: # condition for ignoring lines starting with %
+                    temp=0
+                    for i in range(len(file)):
+                        if file[i][0]!="%":
+                            temp=i; break
+                    file=file[temp:]
                 file=np.concatenate([[float(k) for k in j.split()] for j in file]) # one line with all values
                 # 2D files are output at same line whereas if any 3D each output is given at a different line
                 ndim=[nV+1 if swash_dict[i][3] in out_ind["sta_ke"]+out_ind["ins_ke"] else nV if swash_dict[i][3] in out_ind["sta_kc"]+out_ind["ins_kc"] else 1 for i in tab_rev]
                 # initiate dict that will contain the whole dataset
                 out={}
-                for i in range(len(tab_rev)): # iterave over each keyword requested
+                for i in range(len(tab_rev)): # iterate over each keyword requested
                     out[swash_dict[tab_rev[i]][0]]=file[custom_index(sum(ndim[:i]),ndim[i],int(np.dot(ndim,np.ones(len(ndim)))),len(file))]
                     if ndim[i]==1: # reshape into station and time
                         if tab[0] != "'NOGRID'":
-                            out[swash_dict[tab_rev[i]][0]]=out[swash_dict[tab_rev[i]][0]].reshape((len(point[tab[0]][0]),len(out[swash_dict[tab_rev[i]][0]])//len(point[tab[0]][0])))
+                            out[swash_dict[tab_rev[i]][0]]=out[swash_dict[tab_rev[i]][0]].reshape((len(point[tab[0]][1]),len(out[swash_dict[tab_rev[i]][0]])//len(point[tab[0]][1])))
                             if swash_dict[tab_rev[i]][0] not in ["Time","Tsec"]: # exclude time as it consists of a coordinate (see below)
                                 ds.append(xr.Dataset(
                                     data_vars={swash_dict[tab_rev[i]][0]: (("stations", "time"), out[swash_dict[tab_rev[i]][0]],
@@ -368,7 +391,7 @@ def tab2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
                                             attrs=attr_dict
                                             ))                            
                     else: # reshape into station, time and k
-                        out[swash_dict[tab_rev[i]][0]]=out[swash_dict[tab_rev[i]][0]].reshape((len(point[tab[0]][0]),len(out[swash_dict[tab_rev[i]][0]])//len(point[tab[0]][0])//ndim[i],ndim[i]))
+                        out[swash_dict[tab_rev[i]][0]]=out[swash_dict[tab_rev[i]][0]].reshape((len(point[tab[0]][1]),len(out[swash_dict[tab_rev[i]][0]])//len(point[tab[0]][1])//ndim[i],ndim[i]))
                         ds.append(xr.Dataset(
                                     data_vars={swash_dict[tab_rev[i]][0]: (("stations","time",["kc","ke"][swash_dict[tab_rev[i]][3] in out_ind["sta_ke"]+out_ind["ins_ke"]]), out[swash_dict[tab_rev[i]][0]],
                                                                                 {"standard_name": swash_dict[tab_rev[i]][0],
@@ -389,7 +412,10 @@ def tab2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
                     else: ds=ds.assign_coords(time=out[t][:])
                     ds.time.attrs = {"standard_name": t,"long_name": swash_dict["TSEC"][1], "units": swash_dict["TSEC"][2],"axis":"time"}
                 if tab[0] != "'NOGRID'":
-                    ds['station_y']=(("stations"),point[tab[0]][0])
+                    if len(point[tab[0]][0])==len(point[tab[0]][1]):
+                        ds['station_y']=(("stations"),point[tab[0]][0])
+                    else:
+                        ds['station_y']=(("stations"),np.repeat(point[tab[0]][0][0],len(point[tab[0]][1])))
                     ds['station_x']=(("stations"),point[tab[0]][1])
                     ds.station_y.attrs = {"standard_name": swash_dict['YP'][0],"long_name": swash_dict['YP'][1], "units": swash_dict['YP'][2],"axis":"Y"}
                     ds.station_x.attrs = {"standard_name": swash_dict['XP'][0],"long_name": swash_dict['XP'][1], "units": swash_dict['XP'][2],"axis":"X"}    
