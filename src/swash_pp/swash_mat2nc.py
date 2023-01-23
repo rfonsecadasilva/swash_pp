@@ -1,6 +1,5 @@
 """
-Created on May 04 2021
-Write nc files from SWASH gridded mat output runs.
+Write xarray dataset from SWASH gridded mat and table output runs.
 @author: rfonsecadasilva
 """
 
@@ -9,7 +8,7 @@ def swashdict(path_sc=""):
     Return dictionaries with SWASH output metadata from source code.
 
     Args:
-        path_sc (str, optional): path of SWASH source code if using developer mode (otherwise it parses SWASH 8.01 online version). Defaults to "".
+        path_sc (str, optional): path of SWASH source code if using developer mode (otherwise it parses SWASH 9.01 online version). Defaults to "".
     
     Returns:
         swash_dict (dict): dictionary with SWASH output metadata (keyword, name, and units; read from SwashInit.ftn90).
@@ -41,10 +40,10 @@ def swashdict(path_sc=""):
         import tarfile
         from io import BytesIO
         tmpfile = BytesIO()
-        tmpfile.write(urllib.request.urlopen("https://swash.sourceforge.io/download/zip/swash-8.01.tar.gz").read())
+        tmpfile.write(urllib.request.urlopen("https://swash.sourceforge.io/download/zip/swash-9.01.tar.gz").read())
         tmpfile.seek(0)
         tfile = tarfile.open(fileobj=tmpfile, mode="r:gz")
-        init=tfile.extractfile('swash-8.01/SwashInit.ftn90').readlines()
+        init=tfile.extractfile('swash-9.01/SwashInit.ftn90').readlines()
         tmpfile.close()
         tfile.close()
         init=[i.decode('UTF-8') for i in init]
@@ -65,7 +64,6 @@ def swashdict(path_sc=""):
         ent.append(init[lr].split()[-1])
         lr = [lr+index for index,value in enumerate(init[lr:]) if "ovsvty" in value][0] # Type of variable, e.g., 1 for scalar, 2 for angle, 3 vector, 4 tensor
         ent.append(int(init[lr].split()[-1]))        
-        #swash_dict[ent[1]]=[ent[1],ent[3],ent[4],ent[2],ent[0],ent[5]] #
         swash_dict[ent[2]]=[ent[1],ent[3],ent[4],ent[0],ent[5]] # key is short name, list has: 0 Keyword 1 Long name 2 SWASH Units 3 Ivtype 4 Type of var
     
     # translate SWASH untis (e.g., uh) to real units (e.g., m)
@@ -78,10 +76,11 @@ def swashdict(path_sc=""):
                "SWASH version": [i for i in init if "VERNUM" in i][0].strip().split("=")[1]
                }    
 
-    # dict with ivtype (SWASH source code number for each keyword output) to type (sta or ins; no_grid, 2D, ke, or kc) - based on swash-8.01_further
+    # dict with ivtype (SWASH source code number for each keyword output) to type (sta or ins; no_grid, 2D, ke, or kc)
+    # based on swash-9.01_further - https://github.com/rfonsecadasilva/swash-9.01_further
     # sta is static; ins is instantaneous; no_grid means constant output variables; 2D is twodimensional variable; ke is 3D defined at vertical cell edge, whereas kc is at cell center)
     out_ind={}
-    out_ind["no_grid"]=[40,41] + list(range(101,114)) # no grid instantaneous
+    out_ind["no_grid"]=[40,41] + list(range(101,116)) # no grid instantaneous
     out_ind["sta_2D"] = [1,2,3,5,21,22,23,24,25,26,33,34,35,36,37,42,43,44,46]+list(range(149,185))+[193,194]+list(range(201,216))+[217,218]
     out_ind["ins_2D"] = [4]+list(range(6,21))+list(range(27,33))+list(range(38,40))+[45]+list(range(195,200))+[216]+list(range(249,287))
     out_ind["sta_ke"] = [57,58,59,185,186]
@@ -194,7 +193,7 @@ def mat2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
 
     Args:
         path_run (str): path where run file (*.sws) is located.
-        path_sc (str, optional): path of SWASH source code if using developer mode (otherwise it parses SWASH 8.01 online version). Defaults to "".
+        path_sc (str, optional): path of SWASH source code if using developer mode (otherwise it parses SWASH 9.01 online version). Defaults to "".
         run_file (str, optional): run file name. Defaults to "run.sws".
         save_nc (bool, optional): option to save each nc file. Defaults to True.
     
@@ -213,7 +212,7 @@ def mat2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
         if os.path.exists(path_run+req[2]): # check whether matlab file exists
             if all([i in [j[0] for j in swash_dict.values()] for i in req[-1]]): # check whether all output keywords can be identified
                 out={}
-                out.update(sio.loadmat(path_run+req[2])) # load mat file
+                out.update(sio.loadmat(path_run+req[2])) # load swash output mat file
                 # for vector quantities, create X- and Y- at the start of keys (consistent with swash_dict)
                 out={(i if all([j not in i for j in ["_x","_y"]]) else "X-"+i.replace("_x","") if "_x" in i else "Y-"+i.replace("_y","")):j  for i,j in out.items()}
                 # filter based on static/instantaneous 2D/3D quantities - iterate over output request for each grid
@@ -315,7 +314,7 @@ def tab2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
 
     Args:
         path_run (str): path where run file (*.sws) is located.
-        path_sc (str, optional): path of SWASH source code if using developer mode (otherwise it parses SWASH 8.01 online version). Defaults to "".
+        path_sc (str, optional): path of SWASH source code if using developer mode (otherwise it parses SWASH 9.01 online version). Defaults to "".
         run_file (str, optional): run file name. Defaults to "run.sws".
         save_nc (bool, optional): option to save each nc file. Defaults to True.
     
@@ -337,7 +336,7 @@ def tab2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
         Returns:
             out (np array): np array with custom indexes.
         """
-        return np.concatenate([range(j,j+chunk) for j in range(first_index,len(file),skip)])
+        return np.concatenate([range(j,j+chunk) for j in range(first_index,length,skip)])
 
     reqtable,point,nV=load_table_req(path_run,run_file=run_file)
     swash_dict,attr_dict,out_ind=swashdict(path_sc=path_sc)
@@ -349,11 +348,11 @@ def tab2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
                 # modify tab to account for vectors
                 tab_rev=[]
                 [tab_rev.append(i) if swash_dict[i][4] <3 else (tab_rev.append("X-"+i),tab_rev.append("Y-"+i))  for i in tab[-1]]
-                # initiate xr dataset
+                # initiate list with xr datasets
                 ds=[]
                 # load file
                 file=[i.strip() for i in open(path_run+tab[2]).readlines()]
-                if file[0][0]=="S": # condition for files starting with "SWASH   1" ..." (most likely files with one variable with vertical components)
+                if file[0][0]=="S": # condition for files starting with "SWASH   1" ..." (most likely files with at least one variable with vertical components)
                     file=file[6+4*(len(tab_rev)):] 
                 else: # condition for ignoring lines starting with %
                     temp=0

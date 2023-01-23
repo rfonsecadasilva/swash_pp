@@ -13,13 +13,13 @@ cd swash_pp
 pip install -e .
 ```
 
-### Example of usage for creating and loading nc from SWASH mat files:
+### Example of usage for creating list of xarray datasets from SWASH mat files:
 ```
 from swash_pp import swash_mat2nc as snc
-ds=snc.mat2nc(path_run="~/run_swash/")
+ds=snc.mat2nc(path_run="~/run_swash/",run_file="run.sws")
 ```
 
-### Example of usage for creating gif animation with water level from xr data structure ds (including x, Botlev, and Watlev):
+### Example of usage for creating gif animation with water level from xarray data structure ds (including x, Botlev, and Watlev):
 ```
 from swash_pp import swash_wl_gif as wlg
 gif_name="examp"
