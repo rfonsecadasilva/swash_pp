@@ -2,23 +2,31 @@ import warnings, math, os
 import matplotlib.pyplot as plt
 import imageio
 
-def create_gif(gif_name,ds,xmin,xmax,tmin,tmax,dt,zmin,zmax,gif_path=""):
+def create_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zmin=None,zmax=None,gif_path=""):
     """
     Create gif with water level animation
     Args:
         gif_name (str): Gif name
-        ds (xr data structure): Single data structure with Botlev, Watlev and Ibp.
-        xmin (float): minimum x-position (m)
-        xmax (float): maximum x-position (m)
-        tmin (float): minimum time (s)
-        tmax (float): maximum time (s)
-        dt (float): time step (s)
-        zmin (float): minimum z-position (m)
-        zmax (float): maximum z-position (m)
+        ds (xr data structure): Single data structure with 'x', 'Botlev' and 'Watlev'.
+        xmin (float): minimum x-position (m). If None, ds.x.min().
+        xmax (float): maximum x-position (m). If None, ds.x.max().
+        tmin (float): minimum time (s). If None, ds.t.min().
+        tmax (float): maximum time (s). If None, ds.t.max().
+        dt (float): time step (s). If None, (ds.t.isel(t=1)-ds.t.isel(t=0)).
+        zmin (float): minimum z-position (m). If None, (-ds.Botlev).min().
+        zmax (float): maximum z-position (m). If None, ds.Watlev.max().
         gif_path (str): path where to save gif. Default to "" (local path).
     """
-    
+    import numpy as np
     warnings.filterwarnings('ignore')
+    # Assign xmin, xmax, tmin, tmax, dt, zmin, and xmax if not defined
+    xmin = xmin or ds.x.min().item()
+    xmax = xmax or ds.x.max().item()
+    tmin = tmin or ds.t.min().item()
+    tmax = tmax or ds.t.max().item()
+    dt = dt or (ds.t.isel(t=1)-ds.t.isel(t=0)).item()
+    zmin = zmin or (-ds.Botlev).min().item()
+    zmax = zmax or ds.Watlev.max().item() 
     if not os.path.exists(gif_name): os.mkdir(f'{gif_path}{gif_name}')
     temp=temp=ds.sel(x=slice(xmin,xmax),t=slice(tmin,tmax,math.ceil(dt/((ds.t.isel(t=1)-ds.t.isel(t=0)).values.item()))))
     d=temp.Botlev # bottom level
