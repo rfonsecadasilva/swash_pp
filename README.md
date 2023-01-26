@@ -19,12 +19,9 @@ from swash_pp import swash_mat2nc as snc
 ds=snc.mat2nc(path_run="~/run_swash/",run_file="run.sws")
 ```
 
-### Example of usage for creating gif animation with water level from xarray data structure ds (including x, Botlev, and Watlev):
+### Example of usage for creating gif animation with water level from xarray data structure ds including 'x', 'Botlev', and 'Watlev':
 ```
 from swash_pp import swash_wl_gif as wlg
 gif_name="examp"
-zmin,zmax=-0.4,0.4
-xmin,xmax=46,54
-tmin,tmax,dt=60,70,3.25/20
-wlg.create_gif(gif_name=gif_name,ds=ds,xmin=xmin,xmax=xmax,tmin=tmin,tmax=tmax,dt=dt,zmin=zmin,zmax=zmax)
+wlg.create_gif(gif_name=gif_name,ds=ds)
 ```
