@@ -1,10 +1,14 @@
 import warnings, math, os
 import matplotlib.pyplot as plt
 import imageio
+import xarray as xr
+import matplotlib.colors as colors
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+import numpy as np
 
-def create_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zmin=None,zmax=None,gif_path=""):
+def create_2D_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zmin=None,zmax=None,gif_path="",dpi=100):
     """
-    Create gif with water level animation
+    Create 2D gif with water level animation
     Args:
         gif_name (str): Gif name
         ds (xr data structure): Single data structure with 'x', 'Botlev' and 'Watlev'.
@@ -15,9 +19,9 @@ def create_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zmin=
         dt (float): time step (s). If None, (ds.t.isel(t=1)-ds.t.isel(t=0)).
         zmin (float): minimum z-position (m). If None, (-ds.Botlev).min().
         zmax (float): maximum z-position (m). If None, ds.Watlev.max().
-        gif_path (str): path where to save gif. Default to "" (local path).
+        gif_path (str, optional): path where to save gif. Default to "" (local path).
+        dpi (int): Image dpi. Default to 100.
     """
-    import numpy as np
     warnings.filterwarnings('ignore')
     # Assign xmin, xmax, tmin, tmax, dt, zmin, and xmax if not defined
     xmin = xmin or ds.x.min().item()
@@ -34,8 +38,7 @@ def create_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zmin=
     if "Ibp" in temp: ibp=temp.Ibp # instantanenous beach position
 
     def fig_rp(t=0):
-        
-        fig,ax=plt.subplots(constrained_layout=True,figsize=(10,3))
+        _,ax=plt.subplots(constrained_layout=True,figsize=(10,3))
         ax=[ax]
         ax[0].fill_between(d.x,zmin+0*d.values.squeeze(),-d.values.squeeze(),color="peachpuff") # contour beach
         ax[0].axis('off')
@@ -52,34 +55,177 @@ def create_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zmin=
         plt.savefig(f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png',dpi=100)
         plt.close() 
 
-    def frames_gif(gf,dt):
-        """
-        Combine frames into gif file
-        """
-        
-        frames=[]
-        for filename in [f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png'  for t in range(gf)]:
-            frames.append(imageio.imread(filename))
-        imageio.mimsave(f'{gif_path}{gif_name}.gif', frames, 'GIF', duration=dt)          
-
-    def delete_fig(gf):
-        """
-        Delete original figures
-        """
-        for filename in [f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png'  for t in range(gf)]:
-            os.remove(filename)
-        os.rmdir(f'{gif_path}{gif_name}')
-        
     print(f"Creating figures - total of {len(temp.t)} time steps")
     for t in range(len(temp.t)):
         if t%50==0: print(f"{t+1}/{len(temp.t)}")
         fig_rp(t=t)
         
     print(f"Creating gif")
-    frames_gif(gf=len(temp.t),dt=dt)
+    frames_gif(gf=len(temp.t),dt=dt,gif_name=gif_name,gif_path=gif_path)
     print(f"Deleting figures")
-    delete_fig(gf=len(temp.t))
+    delete_fig(gf=len(temp.t),gif_name=gif_name,gif_path=gif_path)
 
+
+def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,tmax=None,dt=None,zmin=None,zmax=None,
+                  aspect_ratio=None,
+                  vmin=None,vmax=None,sc_wlv=1,elev=50,elev_light=1,azim=-135,azim_light=-155,depmin=None,gif_path="",dpi=100):
+    """
+    Create 3D gif with water level animation
+    Args:
+        gif_name (str): Gif name
+        ds (xr data structure): Single data structure with 'x', 'Botlev' and 'Watlev'.
+        xmin (float, optional): minimum x-position (m). If None, ds.x.min().
+        xmax (float, optional): maximum x-position (m). If None, ds.x.max().
+        ymin (float, optional): minimum y-position (m). If None, ds.y.min().
+        ymax (float, optional): maximum y-position (m). If None, ds.y.max().
+        tmin (float, optional): minimum time (s). If None, ds.t.min().
+        tmax (float, optional): maximum time (s). If None, ds.t.max().
+        dt (float, optional): time step (s). If None, (ds.t.isel(t=1)-ds.t.isel(t=0)).
+        zmin (float, optional): minimum z-position (m). If None, (-ds.Botlev).min().
+        zmax (float, optional): maximum z-position (m). If None, (-ds.Botlev).max().
+        aspect_ratio (list, optional): [x,y,z] aspect ratio. If None, [15,7,5].
+        vmin (float, optional): minimum water level (m). If None, ds.Watlev.min().
+        vmax (float, optional): maximum water level (m). If None, ds.Watlev.max().
+        sc_wlv (float, optional): scale of water level in 3D plot. Default to 1.   
+        elev (float, optional): elevation view (m). Default to 50.
+        elev_light (float, optional): elevation view light (m). Default to 50.
+        azim (float, optional): azimuth view (deg). Default to -135.
+        azim_light (float, optional): azimuth view light (deg). Default to -155.
+        depmin (float, optional): Minimum threshold depth for runup calculation (m). Default to None.
+        gif_path (str, optional): path where to save gif. Default to "" (local path).
+        dpi (int): Image dpi. Default to 100.
+    """
+    warnings.filterwarnings('ignore')
+    # Assign xmin, xmax, ymin, ymax, tmin, tmax, dt, zmin, zmax, aspect_ratio, vmin, vmax, and sc_wlv, if not defined
+    xmin = xmin or ds.x.min().item()
+    xmax = xmax or ds.x.max().item()
+    ymin = ymin or ds.y.min().item()
+    ymax = ymax or ds.y.max().item()    
+    tmin = tmin or ds.t.min().item()
+    tmax = tmax or ds.t.max().item()
+    dt = dt or (ds.t.isel(t=1)-ds.t.isel(t=0)).item()
+    # create subset of xarray dataset
+    temp=ds.sel(x=slice(xmin,xmax),y=slice(ymin,ymax),t=slice(tmin,tmax,math.ceil(dt/((ds.t.isel(t=1)-ds.t.isel(t=0)).values.item()))))
+    zmin = zmin or (-temp.Botlev).min().item()
+    zmax = zmax or (-temp.Botlev).max().item()
+    aspect_ratio = aspect_ratio or [15,7,5]
+    vmin = vmin or temp.Watlev.min().item()
+    vmax = vmax or temp.Watlev.max().item()
+    if not os.path.exists(gif_name): os.mkdir(f'{gif_path}{gif_name}')
+    if depmin: # for runup calaculation
+        temp["Dep"]=temp["Botlev"]+temp["Watlev"]
+        xerror=-1000 #negative value for runup calculation
+        xrunup=xr.where(temp["Dep"]>depmin,temp["x"],xerror).max(dim="x") # to locate waterline position
+        temp["Ibp"]=temp.sel(x=xrunup,t=xrunup.t).Watlev # create instantaneous beach position array (or water level)        
+    #zorder: seabed,water surf,dep centre,runup
+    zorder=[30,40,5,60]
+    def wlv_1d(ax,t=0): # upper 2D plot
+        # plot land and water level surfaces
+        ax.fill_between(temp.x,zmin+0*(-temp.Botlev.isel(y=len(temp.y)//2)).values.squeeze(),(-temp.Botlev.isel(y=len(temp.y)//2)).values.squeeze(),color="peachpuff") # contour beach
+        ax.fill_between(temp.x,(-temp.Botlev.isel(y=len(temp.y)//2)).values.squeeze(),temp.Watlev.isel(y=len(temp.y)//2,t=t).values.squeeze(),color="skyblue",alpha=0.5)        
+        # plot depth line and scatter at centre y
+        ax.plot(np.concatenate(([xmin],temp.x.values)),np.concatenate(([temp.isel(x=0,y=len(temp.y)//2,t=t).Watlev.item()*sc_wlv],-temp.isel(y=len(temp.y)//2).Botlev.values)),'k--')
+        xr.plot.scatter(temp.isel(y=len(temp.y)//2,t=t,x=0),ax=ax,x="x",y="Watlev",c="k",s=200)
+        if depmin: # runup line and scatter
+            ax.plot([xrunup.isel(y=len(temp.y)//2,t=t).item()]*2,[zmin,temp.Ibp.isel(y=len(temp.y)//2,t=t).item()],c='r',ls='--')
+            ax.scatter(xrunup.isel(y=len(temp.y)//2,t=t),temp.isel(y=len(temp.y)//2,t=t).Ibp,c="r",s=200)
+            aax=ax.inset_axes(
+                [0.7,0.2,0.2,0.2], transform=ax.transAxes)
+            ibp=temp.Ibp.isel(y=len(temp.y)//2)
+            [(i.axis([ibp.t.isel(t=0),ibp.t.isel(t=-1),ibp.min().item(),ibp.max().item()]),i.set_xlabel("t [s]"),i.set_ylabel("z [m]"),i.grid("on")) for i in [aax]]
+            aax.plot([ibp.isel(t=t).t.item()],[ibp.isel(t=t).item()],ls="",marker="o",c="r")
+            aax.plot(ibp.isel(t=slice(0,t+1)).t.values,ibp.isel(t=slice(0,t+1)).values,ls="-",marker="",c="r")        
+        # print time
+        ax.text(0.5,1.1,'t = {:.1f} s'.format(temp.isel(t=t).t.item()),transform=ax.transAxes,ha='center',va='bottom')
+        # set axis properties
+        [(i.set_xlabel('X [m]'),i.set_ylabel('$\zeta,-d $ [m]')) for i in [ax]]
+        [(i.set_xlim([xmin-(xmax-xmin)*.01,xmax]),i.set_ylim([zmin,vmax])) for i in [ax]]
+        ax.set_title("")
+    def data_gen(ax,t=0): # lower 3D plot
+        # create seabed colormap
+        cmapb = 'YlOrBr_r'
+        plt.cm.register_cmap(name='seabed',cmap=colors.LinearSegmentedColormap.from_list('seabed',
+                        [(0,plt.cm.get_cmap(cmapb)(int(0.65*255))),
+                        (1,plt.cm.get_cmap(cmapb)(int(.80*255)))]
+                        ))
+        # plot seabed
+        (-temp.Botlev).plot.surface(ax=ax,rstride=1,cstride=1,cmap=plt.cm.get_cmap('seabed',(zmax-zmin)*4),vmax=zmax,vmin=zmin,alpha=0.9,zorder=zorder[0],add_colorbar=False) #seabed with increased arrays (to make it look nicer)        
+        # select water level colormap
+        colmap=plt.cm.get_cmap('Blues',256); colmap.set_bad(color='w',alpha=0) #set color for nan
+        M=np.isnan(temp.Watlev.isel(t=t)) #set mask for nan and depths below hrun
+        light = colors.LightSource(azim_light,elev_light) # azimuth and elevation; light source to be applied to water surface contour face color
+        # plot water level
+        (sc_wlv*temp.Watlev.isel(t=t)).plot.surface(ax=ax,rstride=1, cstride=1, linewidth=0,
+                        antialiased=False, facecolors=light.shade(np.ma.masked_array(temp.Watlev.isel(t=t),mask=M),cmap=colmap,vmin=vmin*sc_wlv,vmax=vmax*sc_wlv),
+                        zorder=zorder[1],alpha=.8,add_colorbar=False)
+        # plot water level line and scatter at centre y and start of x, and profile of depth at centre y
+        ax.plot(np.concatenate(([xmin],temp.x.values)),[temp.isel(y=len(temp.y)//2).y.values]*(len(temp.x)+1),np.concatenate(([temp.isel(x=0,y=len(temp.y)//2,t=t).Watlev.item()*sc_wlv],-temp.isel(y=len(temp.y)//2).Botlev.values)),'k--',zorder=zorder[2],alpha=1)
+        ax.scatter(temp.isel(x=0).x,temp.isel(y=len(temp.y)//2).y,temp.isel(y=len(temp.y)//2,t=t,x=0).Watlev*sc_wlv,s=200,c='k')
+        if depmin: # plot runup line (scatter not possible to see)
+            ax.plot(xrunup.isel(t=t).values,xrunup.isel(t=t).y.values,temp.Ibp.isel(t=t).values*sc_wlv,'r-',zorder=zorder[3])
+        # plot ymin and ymax planes
+        for y in [0,-1]:
+            ax.add_collection3d(Poly3DCollection([[(i.x.item(),i.y.item(),i.item()) for i in (-temp.Botlev).isel(y=y)]+\
+                     [(i.x.item(),i.y.item(),zmin) for i in temp.isel(y=y).isel(x=slice(None,None,-len(temp.x)+1),t=0).Watlev]],
+                                facecolor='burlywood'))
+        # plot xmax plane
+        for x in [-1]:
+            ax.add_collection3d(Poly3DCollection([[(i.x.item(),i.y.item(),zmin) for i in temp.isel(x=x,y=slice(None,None,len(temp.y)-1),t=0).Watlev]+\
+                     [(i.x.item(),i.y.item(),zmax) for i in temp.isel(x=x,y=slice(None,None,-len(temp.y)+1),t=0).Watlev]],
+                                facecolor='burlywood'))            
+        # set axis properties
+        [(i.grid(False),i.set_title(""),i.set_box_aspect(aspect_ratio)) for i in [ax]]
+        for i in [ax]:
+            i.xaxis.pane.fill = False; i.yaxis.pane.fill = False; i.zaxis.pane.fill = False
+            i.xaxis.labelpad = 10; i.yaxis.labelpad = 10
+        [(i.set_xlabel('X [m]'),i.set_ylabel('Y [m]'),i.set_zlabel('Z [m]')) for i in [ax]]
+        [(i.set_xlim([xmin-(xmax-xmin)*.01,xmax]),i.set_ylim([ymin,ymax]),i.set_zlim([zmin,vmax])) for i in [ax]]
+        ax.view_init(elev,azim) #elevation and azimuth
+    
+    def fig_rp(t=0):    
+        fig = plt.figure(figsize=(15,10), constrained_layout=True)
+        specc = fig.add_gridspec(ncols=1,nrows=2,height_ratios=[1.5,5])
+        wlv_1d(fig.add_subplot(specc[0]),t=t)
+        data_gen(fig.add_subplot(specc[1],projection='3d'),t=t)
+        plt.savefig(f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png',dpi=100,bbox_inches='tight')
+        plt.close()         
+
+    print(f"Creating figures - total of {len(temp.t)} time steps")
+    for t in range(len(temp.t)):
+        if t%10==0: print(f"{t+1}/{len(temp.t)}")
+        fig_rp(t=t)
+        
+    print(f"Creating gif")
+    frames_gif(gf=len(temp.t),dt=dt,gif_name=gif_name,gif_path=gif_path)
+    print(f"Deleting figures")
+    delete_fig(gf=len(temp.t),gif_name=gif_name,gif_path=gif_path)
+
+
+def frames_gif(gf,dt,gif_name,gif_path=""):
+    """Combine frames into gif file
+    Args:
+        gf (int): Number of frames.
+        dt (float): time step (s).
+        gif_name (str): Gif name
+        gif_path (str, optional): path where to save gif. Default to "" (local path).
+    """
+    frames=[]
+    for filename in [f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png'  for t in range(gf)]:
+        frames.append(imageio.imread(filename))
+    imageio.mimsave(f'{gif_path}{gif_name}.gif', frames, 'GIF', duration=dt)
+
+def delete_fig(gf,gif_name,gif_path=""):
+    """
+    Delete original figures
+    Args:
+        gf (int): Number of frames.
+        gif_name (str): Gif name
+        gif_path (str, optional): path where to save gif. Default to "" (local path).
+    """    
+    for filename in [f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png'  for t in range(gf)]:
+        os.remove(filename)
+    os.rmdir(f'{gif_path}{gif_name}')
 
 if __name__ == '__main__':
     pass
+
