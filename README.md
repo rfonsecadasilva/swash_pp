@@ -23,5 +23,5 @@ ds=snc.mat2nc(path_run="~/run_swash/",run_file="run.sws")
 ```
 from swash_pp import swash_wl_gif as wlg
 gif_name="examp"
-wlg.create_gif(gif_name=gif_name,ds=ds)
+wlg.create_2D_gif(gif_name=gif_name,ds=ds)
 ```
