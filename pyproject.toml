@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "swash_pp"
 version = "0.0.1"
 authors = [
-  { name="Renan Silva", email="renan.silva@research.uwa.edu.au" },
+  { name="Renan Silva", email="renan.silva@uwa.edu.au" },
 ]
 description = "Post-processing functions of SWASH"
 readme = "README.md"
