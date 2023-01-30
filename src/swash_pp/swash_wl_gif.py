@@ -51,7 +51,6 @@ def create_2D_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zm
         # plot land and water level surfaces
         ax[0].fill_between(d.x,zmin+0*d.values.squeeze(),-d.values.squeeze(),color="peachpuff") # contour beach
         ax[0].fill_between(d.x,-d.values.squeeze(),wl.isel(t=t).values.squeeze(),color="skyblue",alpha=0.5)
-        ax[0].text(xmax,0,"SWL",ha="right")
         if depmin: # runup line and scatter
             aax=ax[0].inset_axes(
                 [0.7,0.2,0.2,0.2], transform=ax[0].transAxes)
@@ -62,12 +61,15 @@ def create_2D_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zm
             aax.plot([ibp.isel(t=t).t.item()],[ibp.isel(t=t).item()],ls="",marker="o",c="r")
             aax.plot(ibp.isel(t=slice(0,t+1)).t.values,ibp.isel(t=slice(0,t+1)).values,ls="-",marker="",c="r")
             ax[0].scatter(xrunup.isel(t=t),ibp.isel(t=t),c="r",s=50)
+            ax[0].plot([xrunup.isel(t=t).item()]*2,[zmin,ibp.isel(t=t).item()],c="r",ls="--") # at SWL
         # set axis properties
         if axis_off:
             ax[0].axis('off')
-            ax[0].axhline(c="k",ls="--") # at SWL
         else:
             [(i.set_xlabel('X [m]'),i.set_ylabel('$\zeta,-d $ [m]')) for i in ax]
+            ax[0].plot([(-d).where(lambda x:x>=0,drop=True).isel(x=0).x.item(),xmax],[0,0],c="k",ls="--") # at SWL
+        ax[0].axhline(c="k",ls="--") # at SWL
+        ax[0].text(xmax,0,"SWL",ha="right")
         [(i.set_xlim([xmin,xmax]),i.set_ylim([zmin,zmax])) for i in ax]
         plt.savefig(f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png',dpi=100)
         plt.close() 
