@@ -6,7 +6,7 @@ import matplotlib.colors as colors
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import numpy as np
 
-def create_2D_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zmin=None,zmax=None,gif_path="",dpi=100):
+def create_2D_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zmin=None,zmax=None,depmin=None,gif_path="",axis_off=False,dpi=100):
     """
     Create 2D gif with water level animation
     Args:
@@ -19,7 +19,9 @@ def create_2D_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zm
         dt (float): time step (s). If None, (ds.t.isel(t=1)-ds.t.isel(t=0)).
         zmin (float): minimum z-position (m). If None, (-ds.Botlev).min().
         zmax (float): maximum z-position (m). If None, ds.Watlev.max().
+        depmin (float, optional): minimum threshold depth for runup calculation (m). Default to None.
         gif_path (str, optional): path where to save gif. Default to "" (local path).
+        axis_off (bool, optional): boolean for plotting axis. Default to False (i.e., axis is plotted).
         dpi (int): Image dpi. Default to 100.
     """
     warnings.filterwarnings('ignore')
@@ -29,29 +31,44 @@ def create_2D_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zm
     tmin = tmin or ds.t.min().item()
     tmax = tmax or ds.t.max().item()
     dt = dt or (ds.t.isel(t=1)-ds.t.isel(t=0)).item()
-    zmin = zmin or (-ds.Botlev).min().item()
-    zmax = zmax or ds.Watlev.max().item() 
+    temp=ds.sel(x=slice(xmin,xmax),t=slice(tmin,tmax,math.ceil(dt/((ds.t.isel(t=1)-ds.t.isel(t=0)).values.item()))))
+    zmin = zmin or (-temp.Botlev).min().item()
+    zmax = zmax or max(temp.Watlev.max().item(),(-temp.Botlev).max().item())
     if not os.path.exists(gif_name): os.mkdir(f'{gif_path}{gif_name}')
-    temp=temp=ds.sel(x=slice(xmin,xmax),t=slice(tmin,tmax,math.ceil(dt/((ds.t.isel(t=1)-ds.t.isel(t=0)).values.item()))))
     d=temp.Botlev # bottom level
     wl=temp.Watlev # water level
-    if "Ibp" in temp: ibp=temp.Ibp # instantanenous beach position
-
+    if depmin: # for runup calaculation
+        temp["Dep"]=temp["Botlev"]+temp["Watlev"]
+        xerror=-1000 #negative value for runup calculation
+        xrunup=xr.where(temp["Dep"]>depmin,temp["x"],xerror).max(dim="x") # to locate waterline position
+        ibp=temp.sel(x=xrunup,t=xrunup.t).Watlev # create instantaneous beach position array (or water level)
+        # calculate runup range
+        vmin,vmax = ibp.min().item(),ibp.max().item()
+        if vmin>0: vmin=-(vmax-vmin)*.2
     def fig_rp(t=0):
         _,ax=plt.subplots(constrained_layout=True,figsize=(10,3))
         ax=[ax]
+        # plot land and water level surfaces
         ax[0].fill_between(d.x,zmin+0*d.values.squeeze(),-d.values.squeeze(),color="peachpuff") # contour beach
-        ax[0].axis('off')
-        ax[0].fill_between(d.x,-d.values.squeeze(),wl.isel(t=t).values.squeeze(),color="skyblue")
-        ax[0].axis([xmin,xmax,zmin,zmax])
-        ax[0].axhline(c="k",ls="--")
+        ax[0].fill_between(d.x,-d.values.squeeze(),wl.isel(t=t).values.squeeze(),color="skyblue",alpha=0.5)
         ax[0].text(xmax,0,"SWL",ha="right")
-        if "Ibp" in temp:
+        if depmin: # runup line and scatter
             aax=ax[0].inset_axes(
                 [0.7,0.2,0.2,0.2], transform=ax[0].transAxes)
-            [(i.set_xticklabels(""),i.set_yticklabels(""),i.axis([ibp.t.isel(t=0),ibp.t.isel(t=-1),ibp.min().item(),ibp.max().item()]),i.set_xlabel("t"),i.set_ylabel("z (SWL)"),i.grid("on"),i.axhline(y=ibp.mean().item(),c="k",ls="--",lw=2)) for i in [aax]]
+            if axis_off:
+                [(i.set_xticklabels(""),i.set_yticklabels(""),i.axis([ibp.t.isel(t=0),ibp.t.isel(t=-1),vmin,vmax]),i.set_xlabel("t"),i.set_ylabel("z (SWL)"),i.grid("on"),i.axhline(y=0,c="k",ls="--",lw=2)) for i in [aax]]
+            else:
+                [(i.axis([ibp.t.isel(t=0),ibp.t.isel(t=-1),vmin,vmax]),i.set_xlabel("t [s]"),i.set_ylabel("z [m]"),i.grid("on"),i.axhline(y=0,c="k",ls="--",lw=2)) for i in [aax]]
             aax.plot([ibp.isel(t=t).t.item()],[ibp.isel(t=t).item()],ls="",marker="o",c="r")
             aax.plot(ibp.isel(t=slice(0,t+1)).t.values,ibp.isel(t=slice(0,t+1)).values,ls="-",marker="",c="r")
+            ax[0].scatter(xrunup.isel(t=t),ibp.isel(t=t),c="r",s=50)
+        # set axis properties
+        if axis_off:
+            ax[0].axis('off')
+            ax[0].axhline(c="k",ls="--") # at SWL
+        else:
+            [(i.set_xlabel('X [m]'),i.set_ylabel('$\zeta,-d $ [m]')) for i in ax]
+        [(i.set_xlim([xmin,xmax]),i.set_ylim([zmin,zmax])) for i in ax]
         plt.savefig(f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png',dpi=100)
         plt.close() 
 
@@ -68,7 +85,7 @@ def create_2D_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zm
 
 def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,tmax=None,dt=None,zmin=None,zmax=None,
                   aspect_ratio=None,
-                  vmin=None,vmax=None,sc_wlv=1,elev=50,elev_light=1,azim=-135,azim_light=-155,depmin=None,gif_path="",dpi=100):
+                  vmin=None,vmax=None,sc_wlv=1,elev=50,elev_light=1,azim=-135,azim_light=-155,depmin=None,gif_path="",axis_off=False,dpi=100):
     """
     Create 3D gif with water level animation
     Args:
@@ -91,8 +108,9 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
         elev_light (float, optional): elevation view light (m). Default to 50.
         azim (float, optional): azimuth view (deg). Default to -135.
         azim_light (float, optional): azimuth view light (deg). Default to -155.
-        depmin (float, optional): Minimum threshold depth for runup calculation (m). Default to None.
+        depmin (float, optional): minimum threshold depth for runup calculation (m). Default to None.
         gif_path (str, optional): path where to save gif. Default to "" (local path).
+        axis_off (bool, optional): boolean for plotting axis. Default to False (i.e., axis is plotted).
         dpi (int): Image dpi. Default to 100.
     """
     warnings.filterwarnings('ignore')
@@ -116,7 +134,10 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
         temp["Dep"]=temp["Botlev"]+temp["Watlev"]
         xerror=-1000 #negative value for runup calculation
         xrunup=xr.where(temp["Dep"]>depmin,temp["x"],xerror).max(dim="x") # to locate waterline position
-        temp["Ibp"]=temp.sel(x=xrunup,t=xrunup.t).Watlev # create instantaneous beach position array (or water level)        
+        temp["Ibp"]=temp.sel(x=xrunup,t=xrunup.t).Watlev # create instantaneous beach position array (or water level)
+        # calculate runup range
+        ibpmin,ibpmax=temp["Ibp"].min().item(),temp["Ibp"].max().item()
+        if ibpmin>0: ibpmin=-(ibpmax-ibpmin)*.2
     #zorder: seabed,water surf,dep centre,runup
     zorder=[30,40,5,60]
     def wlv_1d(ax,t=0): # upper 2D plot
@@ -132,14 +153,20 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
             aax=ax.inset_axes(
                 [0.7,0.2,0.2,0.2], transform=ax.transAxes)
             ibp=temp.Ibp.isel(y=len(temp.y)//2)
-            [(i.axis([ibp.t.isel(t=0),ibp.t.isel(t=-1),ibp.min().item(),ibp.max().item()]),i.set_xlabel("t [s]"),i.set_ylabel("z [m]"),i.grid("on")) for i in [aax]]
+            if axis_off:
+                [(i.set_xticklabels(""),i.set_yticklabels(""),i.axis([ibp.t.isel(t=0),ibp.t.isel(t=-1),ibpmin,ibpmax]),i.set_xlabel("t"),i.set_ylabel("z (SWL)"),i.grid("on"),i.axhline(y=0,c="k",ls="--",lw=2)) for i in [aax]]
+            else:
+                [(i.axis([ibp.t.isel(t=0),ibp.t.isel(t=-1),ibp.min().item(),ibp.max().item()]),i.set_xlabel("t [s]"),i.set_ylabel("z [m]"),i.grid("on")) for i in [aax]]
             aax.plot([ibp.isel(t=t).t.item()],[ibp.isel(t=t).item()],ls="",marker="o",c="r")
             aax.plot(ibp.isel(t=slice(0,t+1)).t.values,ibp.isel(t=slice(0,t+1)).values,ls="-",marker="",c="r")        
-        # print time
-        ax.text(0.5,1.1,'t = {:.1f} s'.format(temp.isel(t=t).t.item()),transform=ax.transAxes,ha='center',va='bottom')
         # set axis properties
-        [(i.set_xlabel('X [m]'),i.set_ylabel('$\zeta,-d $ [m]')) for i in [ax]]
-        [(i.set_xlim([xmin-(xmax-xmin)*.01,xmax]),i.set_ylim([zmin,vmax])) for i in [ax]]
+        if axis_off:
+            ax.axis('off')
+        else:
+            # print time
+            ax.text(0.5,1.1,'t = {:.1f} s'.format(temp.isel(t=t).t.item()),transform=ax.transAxes,ha='center',va='bottom')
+            [(i.set_xlabel('X [m]'),i.set_ylabel('$\zeta,-d $ [m]')) for i in [ax]]
+        [(i.set_xlim([xmin-(xmax-xmin)*.01,xmax]),i.set_ylim([zmin,max(zmax,vmax)])) for i in [ax]]
         ax.set_title("")
     def data_gen(ax,t=0): # lower 3D plot
         # create seabed colormap
@@ -178,8 +205,11 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
         for i in [ax]:
             i.xaxis.pane.fill = False; i.yaxis.pane.fill = False; i.zaxis.pane.fill = False
             i.xaxis.labelpad = 10; i.yaxis.labelpad = 10
-        [(i.set_xlabel('X [m]'),i.set_ylabel('Y [m]'),i.set_zlabel('Z [m]')) for i in [ax]]
-        [(i.set_xlim([xmin-(xmax-xmin)*.01,xmax]),i.set_ylim([ymin,ymax]),i.set_zlim([zmin,vmax])) for i in [ax]]
+        if axis_off:
+             ax.axis('off')
+        else:
+            [(i.set_xlabel('X [m]'),i.set_ylabel('Y [m]'),i.set_zlabel('Z [m]')) for i in [ax]]
+        [(i.set_xlim([xmin-(xmax-xmin)*.01,xmax]),i.set_ylim([ymin,ymax]),i.set_zlim([zmin,max(zmax,vmax)])) for i in [ax]]
         ax.view_init(elev,azim) #elevation and azimuth
     
     def fig_rp(t=0):    
