@@ -158,7 +158,7 @@ def load_table_req(path_run,run_file="run.sws"):
     reqtable = [ [i.split()[1],
             ['mean','inst']['OUT' in i], # mean and instantaneous variables
             [j.replace("'","") for j in i.split() if i.split(".")[1].split()[0][:-1] in j][0], # name of table file
-            [i for i in i.split(".")[1].split()[1:] if i!="OUT"]] # list of requested variables
+            [k for k in i.split("OUT")[0].split(".")[1].split()[1:]]] # list of requested variables 
             for i in reqt]
     # make list with table
     fname=[i.split()[1] for i in sws if i[:3]=='POI' or i[:3]=='FRA'] #point names (note that table can also use grids)
