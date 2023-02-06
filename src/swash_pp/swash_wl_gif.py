@@ -63,15 +63,17 @@ def create_2D_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zm
             ax[0].scatter(xrunup.isel(t=t),ibp.isel(t=t),c="r",s=50)
             ax[0].plot([xrunup.isel(t=t).item()]*2,[zmin,ibp.isel(t=t).item()],c="r",ls="--") # at SWL
         # set axis properties
+        ax[0].set_title("")
         if axis_off:
             ax[0].axis('off')
         else:
             [(i.set_xlabel('X [m]'),i.set_ylabel('$\zeta,-d $ [m]')) for i in ax]
             ax[0].plot([(-d).where(lambda x:x>=0,drop=True).isel(x=0).x.item(),xmax],[0,0],c="k",ls="--") # at SWL
+            ax[0].text(0.5,1.1,'t = {:.1f} s'.format(temp.isel(t=t).t.item()),transform=ax[0].transAxes,ha='center',va='bottom') # print time
         ax[0].axhline(c="k",ls="--") # at SWL
         ax[0].text(xmax,0,"SWL",ha="right")
         [(i.set_xlim([xmin,xmax]),i.set_ylim([zmin,zmax])) for i in ax]
-        plt.savefig(f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png',dpi=100)
+        plt.savefig(f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png',dpi=dpi)
         plt.close() 
 
     print(f"Creating figures - total of {len(temp.t)} time steps")
@@ -219,7 +221,7 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
         specc = fig.add_gridspec(ncols=1,nrows=2,height_ratios=[1.5,5])
         wlv_1d(fig.add_subplot(specc[0]),t=t)
         data_gen(fig.add_subplot(specc[1],projection='3d'),t=t)
-        plt.savefig(f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png',dpi=100,bbox_inches='tight')
+        plt.savefig(f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png',dpi=dpi,bbox_inches='tight')
         plt.close()         
 
     print(f"Creating figures - total of {len(temp.t)} time steps")
@@ -257,6 +259,71 @@ def delete_fig(gf,gif_name,gif_path=""):
     for filename in [f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png'  for t in range(gf)]:
         os.remove(filename)
     os.rmdir(f'{gif_path}{gif_name}')
+
+
+def create_2D_comp_gif(gif_name,ds,label,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zmin=None,zmax=None,depmin=None,gif_path="",axis_off=False,dpi=100):
+    """
+    Create 2D gif with water level animation for comparison between runs.
+    Args:
+        gif_name (str): Gif name
+        ds (list): List with single xr data structure with 'x', 'Botlev' and 'Watlev'.
+        label (list): List with names of run (for legend).
+        xmin (float): minimum x-position (m). If None, ds.x.min().
+        xmax (float): maximum x-position (m). If None, ds.x.max().
+        tmin (float): minimum time (s). If None, ds.t.min().
+        tmax (float): maximum time (s). If None, ds.t.max().
+        dt (float): time step (s). If None, (ds.t.isel(t=1)-ds.t.isel(t=0)).
+        zmin (float): minimum z-position (m). If None, (-ds.Botlev).min().
+        zmax (float): maximum z-position (m). If None, ds.Watlev.max().
+        gif_path (str, optional): path where to save gif. Default to "" (local path).
+        axis_off (bool, optional): boolean for plotting axis. Default to False (i.e., axis is plotted).
+        dpi (int): Image dpi. Default to 100.
+    """
+    warnings.filterwarnings('ignore')
+    # Assign xmin, xmax, tmin, tmax, dt, zmin, and xmax if not defined
+    xmin = xmin or min([i.x.min().item() for i in ds])
+    xmax = xmax or min([i.x.max().item() for i in ds])
+    tmin = tmin or min([i.t.min().item() for i in ds])
+    tmax = tmax or min([i.t.max().item() for i in ds])
+    dt = dt or (ds[0].t.isel(t=1)-ds[0].t.isel(t=0)).item()
+    temp=[i.sel(x=slice(xmin,xmax),t=slice(tmin,tmax,math.ceil(dt/((i.t.isel(t=1)-i.t.isel(t=0)).values.item())))) for i in ds]
+    zmin = zmin or min([(-i.Botlev).min().item() for i in temp])
+    zmax = zmax or max([max(i.Watlev.max().item(),(-i.Botlev).max().item()) for i in temp])
+    if not os.path.exists(gif_name): os.mkdir(f'{gif_path}{gif_name}')
+    d=temp[0].Botlev # bottom level - only for first in the list
+    wl=[i.Watlev for i in temp] # water level
+    def fig_rp(t=0):
+        _,ax=plt.subplots(constrained_layout=True,figsize=(10,3))
+        ax=[ax]
+        c=["k","r","b","g","gray"]
+        # plot land and water level surfaces
+        ax[0].fill_between(d.x,zmin+0*d.values.squeeze(),-d.values.squeeze(),color="peachpuff") # contour beach
+        #ax[0].fill_between(d.x,-d.values.squeeze(),wl.isel(t=t).values.squeeze(),color="skyblue",alpha=0.5)
+        [i.isel(t=t).plot(ax=ax[0],color=j,label=l) for i,j,l in zip(wl,c,label)]
+        ax[0].legend(loc="lower right")
+        ax[0].set_title("")
+        # set axis properties
+        if axis_off:
+            ax[0].axis('off')
+        else:
+            [(i.set_xlabel('X [m]'),i.set_ylabel('$\zeta,-d $ [m]')) for i in ax]
+            ax[0].plot([(-d).where(lambda x:x>=0,drop=True).isel(x=0).x.item(),xmax],[0,0],c="k",ls="--") # at SWL
+            ax[0].text(0.5,1.1,'t = {:.1f} s'.format(temp[0].isel(t=t).t.item()),transform=ax[0].transAxes,ha='center',va='bottom') # print time      
+        ax[0].axhline(c="k",ls="--") # at SWL
+        ax[0].text(xmax,0,"SWL",ha="right")
+        [(i.set_xlim([xmin,xmax]),i.set_ylim([zmin,zmax])) for i in ax]
+        plt.savefig(f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png',dpi=dpi)
+        plt.close() 
+
+    print(f"Creating figures - total of {len(temp[0].t)} time steps")
+    for t in range(len(temp[0].t)):
+        if t%50==0: print(f"{t+1}/{len(temp[0].t)}")
+        fig_rp(t=t)
+        
+    print(f"Creating gif")
+    frames_gif(gf=len(temp[0].t),dt=dt,gif_name=gif_name,gif_path=gif_path)
+    print(f"Deleting figures")
+    delete_fig(gf=len(temp[0].t),gif_name=gif_name,gif_path=gif_path)
 
 if __name__ == '__main__':
     pass
