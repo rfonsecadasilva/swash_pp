@@ -91,7 +91,7 @@ def create_2D_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zm
 def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,tmax=None,dt=None,zmin=None,zmax=None,
                   aspect_ratio=None,
                   vmin=None,vmax=None,sc_wlv=1,elev=50,elev_light=1,azim=-135,azim_light=-155,depmin=None,
-                  acc_factor=1,gif_path="",axis_off=False,dpi=100):
+                  acc_factor=1,gif_path="",axis_off=False,dpi=100,combine_only=False,tpar=-1):
     """
     Create 3D gif with water level animation
     Args:
@@ -119,6 +119,26 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
         gif_path (str, optional): path where to save gif. Default to "" (local path).
         axis_off (bool, optional): boolean for plotting axis. Default to False (i.e., axis is plotted).
         dpi (int): Image dpi. Default to 100.
+        combine_only (bool): Condition for not generating frames but only combining them. Default to False.
+        tpar (int): If different than -1, only generate frame for index tpar (for parallel computation). Default to -1.
+    
+        For parallel computing, the argument tpar can be used across a parallelized time loop. For example:
+    '''
+    # define the parallel function
+    import multiprocessing
+    def process_elements_in_parallel(time):
+        with multiprocessing.Pool(processes=4) as pool: # 4 is the number of CPUs to be used
+            pool.starmap(wlg.create_3D_gif, [(gif_name,ds,xmin,xmax,ymin,ymax,tmin,tmax,dt,zmin,zmax,
+                    aspect_ratio,
+                    vmin,vmax,sc_wlv,elev,elev-light,azim,azim_light,depmin,
+                    acc_factor,gif_path,axis_off,dpi,False,t) for t in time]) #note that here this function needs all arguments to be explicitly stated    
+    # with tmin, tmax, and dt, define temp xr dataset and get the time length
+    t_len =len(ds.sel(t=slice(tmin,tmax,math.ceil(dt/((ds.t.isel(t=1)-ds.t.isel(t=0)).values.item())))).t)
+    # generate frames in parallel
+    process_elements_in_parallel(range(t_len)) 
+    # combine frames and create 3D gif
+    wlg.create_3D_gif(gif_name=gif_name,ds=ds,tmin=tmin,tmax=tmax,dt=dt,acc_factor=acc_factor,combine_only=True) 
+    '''
     """
     warnings.filterwarnings('ignore')
     # Assign xmin, xmax, ymin, ymax, tmin, tmax, dt, zmin, zmax, aspect_ratio, vmin, vmax, and sc_wlv, if not defined
@@ -225,17 +245,28 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
         wlv_1d(fig.add_subplot(specc[0]),t=t)
         data_gen(fig.add_subplot(specc[1],projection='3d'),t=t)
         plt.savefig(f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png',dpi=dpi,bbox_inches='tight')
-        plt.close()         
+        plt.close()
 
-    print(f"Creating figures - total of {len(temp.t)} time steps")
-    for t in range(len(temp.t)):
-        if t%10==0: print(f"{t+1}/{len(temp.t)}")
-        fig_rp(t=t)
-        
-    print(f"Creating gif")
-    frames_gif(gf=len(temp.t),dt=dt,gif_name=gif_name,gif_path=gif_path,acc_factor=acc_factor)
-    print(f"Deleting figures")
-    delete_fig(gf=len(temp.t),gif_name=gif_name,gif_path=gif_path)
+    if not combine_only:
+        if tpar==-1:
+            print(f"Creating figures - total of {len(temp.t)} time steps")
+            for t in range(len(temp.t)):
+                if t%10==0: print(f"{t+1}/{len(temp.t)}")
+                fig_rp(t=t)
+            print(f"Creating gif")
+            frames_gif(gf=len(temp.t),dt=dt,gif_name=gif_name,gif_path=gif_path,acc_factor=acc_factor)
+            print(f"Deleting figures")
+            delete_fig(gf=len(temp.t),gif_name=gif_name,gif_path=gif_path)
+        else:
+            #print(f"{tpar+1}/{len(temp.t)}") # for debugging
+            number_pngs=len([i for i in os.listdir(f'{gif_path}{gif_name}/') if i.split('.')[-1]=='png'])
+            if number_pngs%10==0: print(f"{number_pngs/len(temp.t)*100:.1f} %")
+            fig_rp(t=tpar)       
+    else:
+            print(f"Creating gif")
+            frames_gif(gf=len(temp.t),dt=dt,gif_name=gif_name,gif_path=gif_path,acc_factor=acc_factor)
+            print(f"Deleting figures")
+            delete_fig(gf=len(temp.t),gif_name=gif_name,gif_path=gif_path)
 
 
 def frames_gif(gf,dt,gif_name,gif_path="",acc_factor=1):
