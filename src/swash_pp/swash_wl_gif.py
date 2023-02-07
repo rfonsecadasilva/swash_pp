@@ -6,7 +6,7 @@ import matplotlib.colors as colors
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import numpy as np
 
-def create_2D_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zmin=None,zmax=None,depmin=None,gif_path="",axis_off=False,dpi=100):
+def create_2D_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zmin=None,zmax=None,depmin=None,acc_factor=1,gif_path="",axis_off=False,dpi=100):
     """
     Create 2D gif with water level animation
     Args:
@@ -20,6 +20,7 @@ def create_2D_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zm
         zmin (float): minimum z-position (m). If None, (-ds.Botlev).min().
         zmax (float): maximum z-position (m). If None, ds.Watlev.max().
         depmin (float, optional): minimum threshold depth for runup calculation (m). Default to None.
+        acc_factor (float, optional): Ratio of frame duration by dt. Default to 1.
         gif_path (str, optional): path where to save gif. Default to "" (local path).
         axis_off (bool, optional): boolean for plotting axis. Default to False (i.e., axis is plotted).
         dpi (int): Image dpi. Default to 100.
@@ -82,14 +83,15 @@ def create_2D_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zm
         fig_rp(t=t)
         
     print(f"Creating gif")
-    frames_gif(gf=len(temp.t),dt=dt,gif_name=gif_name,gif_path=gif_path)
+    frames_gif(gf=len(temp.t),dt=dt,gif_name=gif_name,gif_path=gif_path,acc_factor=acc_factor)
     print(f"Deleting figures")
     delete_fig(gf=len(temp.t),gif_name=gif_name,gif_path=gif_path)
 
 
 def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,tmax=None,dt=None,zmin=None,zmax=None,
                   aspect_ratio=None,
-                  vmin=None,vmax=None,sc_wlv=1,elev=50,elev_light=1,azim=-135,azim_light=-155,depmin=None,gif_path="",axis_off=False,dpi=100):
+                  vmin=None,vmax=None,sc_wlv=1,elev=50,elev_light=1,azim=-135,azim_light=-155,depmin=None,
+                  acc_factor=1,gif_path="",axis_off=False,dpi=100):
     """
     Create 3D gif with water level animation
     Args:
@@ -113,6 +115,7 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
         azim (float, optional): azimuth view (deg). Default to -135.
         azim_light (float, optional): azimuth view light (deg). Default to -155.
         depmin (float, optional): minimum threshold depth for runup calculation (m). Default to None.
+        acc_factor (float, optional): Ratio of frame duration by dt. Default to 1.
         gif_path (str, optional): path where to save gif. Default to "" (local path).
         axis_off (bool, optional): boolean for plotting axis. Default to False (i.e., axis is plotted).
         dpi (int): Image dpi. Default to 100.
@@ -230,23 +233,24 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
         fig_rp(t=t)
         
     print(f"Creating gif")
-    frames_gif(gf=len(temp.t),dt=dt,gif_name=gif_name,gif_path=gif_path)
+    frames_gif(gf=len(temp.t),dt=dt,gif_name=gif_name,gif_path=gif_path,acc_factor=acc_factor)
     print(f"Deleting figures")
     delete_fig(gf=len(temp.t),gif_name=gif_name,gif_path=gif_path)
 
 
-def frames_gif(gf,dt,gif_name,gif_path=""):
+def frames_gif(gf,dt,gif_name,gif_path="",acc_factor=1):
     """Combine frames into gif file
     Args:
         gf (int): Number of frames.
         dt (float): time step (s).
         gif_name (str): Gif name
         gif_path (str, optional): path where to save gif. Default to "" (local path).
+        acc_factor (float, optional): Ratio of frame duration by dt. Default to 1.
     """
     frames=[]
     for filename in [f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png'  for t in range(gf)]:
         frames.append(imageio.imread(filename))
-    imageio.mimsave(f'{gif_path}{gif_name}.gif', frames, 'GIF', duration=dt)
+    imageio.mimsave(f'{gif_path}{gif_name}.gif', frames, 'GIF', duration=dt/acc_factor)
 
 def delete_fig(gf,gif_name,gif_path=""):
     """
@@ -261,7 +265,7 @@ def delete_fig(gf,gif_name,gif_path=""):
     os.rmdir(f'{gif_path}{gif_name}')
 
 
-def create_2D_comp_gif(gif_name,ds,label,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zmin=None,zmax=None,depmin=None,gif_path="",axis_off=False,dpi=100):
+def create_2D_comp_gif(gif_name,ds,label,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zmin=None,zmax=None,depmin=None,acc_factor=1,gif_path="",axis_off=False,dpi=100):
     """
     Create 2D gif with water level animation for comparison between runs.
     Args:
@@ -275,6 +279,7 @@ def create_2D_comp_gif(gif_name,ds,label,xmin=None,xmax=None,tmin=None,tmax=None
         dt (float): time step (s). If None, (ds.t.isel(t=1)-ds.t.isel(t=0)).
         zmin (float): minimum z-position (m). If None, (-ds.Botlev).min().
         zmax (float): maximum z-position (m). If None, ds.Watlev.max().
+        acc_factor (float, optional): Ratio of frame duration by dt. Default to 1.
         gif_path (str, optional): path where to save gif. Default to "" (local path).
         axis_off (bool, optional): boolean for plotting axis. Default to False (i.e., axis is plotted).
         dpi (int): Image dpi. Default to 100.
