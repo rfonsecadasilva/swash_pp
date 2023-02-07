@@ -91,7 +91,7 @@ def create_2D_gif(gif_name,ds,xmin=None,xmax=None,tmin=None,tmax=None,dt=None,zm
 def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,tmax=None,dt=None,zmin=None,zmax=None,
                   aspect_ratio=None,
                   vmin=None,vmax=None,sc_wlv=1,elev=50,elev_light=1,azim=-135,azim_light=-155,depmin=None,
-                  acc_factor=1,gif_path="",axis_off=False,dpi=100,combine_only=False,tpar=-1):
+                  acc_factor=1,gif_path="",axis_off=False,dpi=100,plot_dep_dev=False,combine_only=False,tpar=-1):
     """
     Create 3D gif with water level animation
     Args:
@@ -106,7 +106,7 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
         dt (float, optional): time step (s). If None, (ds.t.isel(t=1)-ds.t.isel(t=0)).
         zmin (float, optional): minimum z-position (m). If None, (-ds.Botlev).min().
         zmax (float, optional): maximum z-position (m). If None, (-ds.Botlev).max().
-        aspect_ratio (list, optional): [x,y,z] aspect ratio. If None, [15,7,5].
+        aspect_ratio (list, optional): [x,y,z] aspect ratio. Default to None.
         vmin (float, optional): minimum water level (m). If None, ds.Watlev.min().
         vmax (float, optional): maximum water level (m). If None, ds.Watlev.max().
         sc_wlv (float, optional): scale of water level in 3D plot. Default to 1.   
@@ -119,6 +119,7 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
         gif_path (str, optional): path where to save gif. Default to "" (local path).
         axis_off (bool, optional): boolean for plotting axis. Default to False (i.e., axis is plotted).
         dpi (int): Image dpi. Default to 100.
+        plot_dep_dev (bool): Condition plotting deviations from depth at the first cross-shore section. Default to False.
         combine_only (bool): Condition for not generating frames but only combining them. Default to False.
         tpar (int): If different than -1, only generate frame for index tpar (for parallel computation). Default to -1.
     
@@ -129,8 +130,7 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
     def process_elements_in_parallel(time):
         with multiprocessing.Pool(processes=4) as pool: # 4 is the number of CPUs to be used
             pool.starmap(wlg.create_3D_gif, [(gif_name,ds,xmin,xmax,ymin,ymax,tmin,tmax,dt,zmin,zmax,
-                    aspect_ratio,
-                    vmin,vmax,sc_wlv,elev,elev-light,azim,azim_light,depmin,
+                    aspect_ratio,vmin,vmax,sc_wlv,elev,elev-light,azim,azim_light,depmin,
                     acc_factor,gif_path,axis_off,dpi,False,t) for t in time]) #note that here this function needs all arguments to be explicitly stated    
     # with tmin, tmax, and dt, define temp xr dataset and get the time length
     t_len =len(ds.sel(t=slice(tmin,tmax,math.ceil(dt/((ds.t.isel(t=1)-ds.t.isel(t=0)).values.item())))).t)
@@ -153,7 +153,6 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
     temp=ds.sel(x=slice(xmin,xmax),y=slice(ymin,ymax),t=slice(tmin,tmax,math.ceil(dt/((ds.t.isel(t=1)-ds.t.isel(t=0)).values.item()))))
     zmin = zmin or (-temp.Botlev).min().item()
     zmax = zmax or (-temp.Botlev).max().item()
-    aspect_ratio = aspect_ratio or [15,7,5]
     vmin = vmin or temp.Watlev.min().item()
     vmax = vmax or temp.Watlev.max().item()
     if not os.path.exists(gif_name): os.mkdir(f'{gif_path}{gif_name}')
@@ -165,6 +164,8 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
         # calculate runup range
         ibpmin,ibpmax=temp["Ibp"].min().item(),temp["Ibp"].max().item()
         if ibpmin>0: ibpmin=-(ibpmax-ibpmin)*.2
+        # transform into nan
+        temp["Watlev"]=temp["Watlev"].where(lambda x:x.x<=xrunup)
     #zorder: seabed,water surf,dep centre,runup
     zorder=[30,40,5,60]
     def wlv_1d(ax,t=0): # upper 2D plot
@@ -204,9 +205,12 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
                         ))
         # plot seabed
         (-temp.Botlev).plot.surface(ax=ax,rstride=1,cstride=1,cmap=plt.cm.get_cmap('seabed',(zmax-zmin)*4),vmax=zmax,vmin=zmin,alpha=0.9,zorder=zorder[0],add_colorbar=False) #seabed with increased arrays (to make it look nicer)        
+        if plot_dep_dev: # plot deviation from first line of seabed
+            (-(ds.where(ds.Botlev-ds.isel(y=0).Botlev!=0,drop=True).Botlev)).plot.surface(ax=ax,rstride=1,cstride=1,color='orangered',zorder=500,add_colorbar=False)      
         # select water level colormap
-        colmap=plt.cm.get_cmap('Blues',256); colmap.set_bad(color='w',alpha=0) #set color for nan
-        M=np.isnan(temp.Watlev.isel(t=t)) #set mask for nan and depths below hrun
+        colmap=plt.cm.get_cmap('Blues',256)
+        colmap.set_bad(color='w',alpha=0) #set color for nan
+        M=np.isnan(temp.Watlev.isel(t=t)) #set mask for nan
         light = colors.LightSource(azim_light,elev_light) # azimuth and elevation; light source to be applied to water surface contour face color
         # plot water level
         (sc_wlv*temp.Watlev.isel(t=t)).plot.surface(ax=ax,rstride=1, cstride=1, linewidth=0,
@@ -228,7 +232,8 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
                      [(i.x.item(),i.y.item(),zmax) for i in temp.isel(x=x,y=slice(None,None,-len(temp.y)+1),t=0).Watlev]],
                                 facecolor='burlywood'))            
         # set axis properties
-        [(i.grid(False),i.set_title(""),i.set_box_aspect(aspect_ratio)) for i in [ax]]
+        [(i.grid(False),i.set_title("")) for i in [ax]]
+        if aspect_ratio: ax.set_box_aspect(aspect_ratio)
         for i in [ax]:
             i.xaxis.pane.fill = False; i.yaxis.pane.fill = False; i.zaxis.pane.fill = False
             i.xaxis.labelpad = 10; i.yaxis.labelpad = 10
