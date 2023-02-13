@@ -199,12 +199,12 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
     def data_gen(ax,t=0): # lower 3D plot
         # create seabed colormap
         cmapb = 'YlOrBr_r'
-        plt.cm.register_cmap(name='seabed',cmap=colors.LinearSegmentedColormap.from_list('seabed',
+        plt.cm.register_cmap(name='seabed2',cmap=colors.LinearSegmentedColormap.from_list('seabed',
                         [(0,plt.cm.get_cmap(cmapb)(int(0.65*255))),
                         (1,plt.cm.get_cmap(cmapb)(int(.80*255)))]
                         ))
         # plot seabed
-        (-temp.Botlev).plot.surface(ax=ax,rstride=1,cstride=1,cmap=plt.cm.get_cmap('seabed',(zmax-zmin)*4),vmax=zmax,vmin=zmin,alpha=0.9,zorder=zorder[0],add_colorbar=False) #seabed with increased arrays (to make it look nicer)        
+        (-temp.Botlev).plot.surface(ax=ax,rstride=1,cstride=1,cmap=plt.cm.get_cmap('seabed2',(zmax-zmin)*4),vmax=zmax,vmin=zmin,alpha=0.9,zorder=zorder[0],add_colorbar=False) #seabed with increased arrays (to make it look nicer)        
         if plot_dep_dev: # plot deviation from first line of seabed
             (-(ds.where(ds.Botlev-ds.isel(y=0).Botlev!=0,drop=True).Botlev)).plot.surface(ax=ax,rstride=1,cstride=1,color='orangered',zorder=500,add_colorbar=False)      
         # select water level colormap
