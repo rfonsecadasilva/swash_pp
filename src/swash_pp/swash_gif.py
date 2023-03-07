@@ -250,10 +250,12 @@ def create_3D_gif(gif_name,ds,xmin=None,xmax=None,ymin=None,ymax=None,tmin=None,
     def fig_rp(t=0):    
         fig = plt.figure(figsize=(15,10), constrained_layout=True)
         specc = fig.add_gridspec(ncols=1,nrows=2,height_ratios=[1.5,5])
-        wlv_1d(fig.add_subplot(specc[0]),t=t)
-        data_gen(fig.add_subplot(specc[1],projection='3d'),t=t)
+        ax0=fig.add_subplot(specc[0])
+        ax1=fig.add_subplot(specc[1],projection='3d')
+        wlv_1d(ax0,t=t)
+        data_gen(ax1,t=t)
         if return_fig:
-            #plt.close(fig)
+            plt.close()
             return fig
         plt.savefig(f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png',dpi=dpi,bbox_inches='tight')
         plt.close()
