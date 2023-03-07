@@ -198,6 +198,33 @@ def Hs_Theta_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scal
     plt.close()
     return fig
 
+
+def plot_dt(path_run,print="PRINT"):
+    """Plot time series of dt based on PRINT file
+
+    Args:
+        path_run (str): run path.
+        print (str, optional): PRINT log file. Defaults to "PRINT".
+
+    Returns:
+        fig: matplotlib figure with time series of dt.
+    """
+    file=[i.strip() for i in open(path_run+print,"r").readlines()]
+    dt0=[float(i.split()[2]) for i in file if "COMPUTE" in i][0]
+    tinit=[float(i.split()[1][:2])*3600 + float(i.split()[1][2:4])*60 + float(i.split()[1][4:])  for i in file if "COMPUTE" in i][0]
+    tend=[float(i.split()[4][:2])*3600 + float(i.split()[4][2:4])*60 + float(i.split()[4][4:])  for i in file if "COMPUTE" in i][0]
+    dt=[dt0]+[float(i.split("New time step:")[-1].split()[0]) for i in file if "New time step:" in i]
+    dt=np.array(dt+[dt[-1]])
+    t=np.array([tinit]+[float(file[i].split("in sec:")[-1].split()[0]) for i in range(1,len(file)) if "New time step:" in file[i-1]]+[tend])
+    fig,ax=plt.subplots(figsize=(10,5))
+    ax.plot(t,dt,c="k",marker="o")
+    ax.grid()
+    ax.set_xlabel("t [s]")
+    ax.set_ylabel("dt [s]")
+    ax.set_xlim([t[0],t[-1]])
+    plt.close()
+    return fig
+
 if __name__ == '__main__':
     pass
 
