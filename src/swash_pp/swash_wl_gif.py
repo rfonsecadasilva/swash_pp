@@ -373,7 +373,7 @@ def create_2D_comp_gif(gif_name,ds,label,xmin=None,xmax=None,tmin=None,tmax=None
     print(f"Deleting figures")
     delete_fig(gf=len(temp[0].t),gif_name=gif_name,gif_path=gif_path)
 
-def create_mamfv_gif(gif_name,ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,tmin=None,tmax=None,dt=None,scale=None,vel_clip_max=None,vel_clip_min=None,acc_factor=1,gif_path="",axis_off=False,dpi=100,plot_dep_dev=False):
+def create_mamfv_gif(gif_name,ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,tmin=None,tmax=None,dt=None,scale=None,vel_clip_max=None,vel_clip_min=None,acc_factor=1,gif_path="",axis_off=False,dpi=100,plot_dep_dev=False,dep_levels=None,Tp=None):
     """
     Create 2D gif with moving average of mass flux velocities animation
     Args:
@@ -387,13 +387,15 @@ def create_mamfv_gif(gif_name,ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None
         tmax (float): maximum time (s). If None, ds.t.max().
         dt (float): time step (s). If None, (ds.t.isel(t=1)-ds.t.isel(t=0)).
         scale (float, optional): minimum threshold depth for runup calculation (m). Default to 1.
-        vel_clip_max (float, optional): maximum x- and y-velocity clip (in m/s). Default to None (i.e., no clipping).
-        vel_clip_min (float, optional): minimum absolute velocity (in m/s) to be plotted (otherwise nan). Default to None
+        vel_clip_max (float, optional): maximum x- and y-velocity clip (in % of x quantile). Default to None (i.e., no clipping).
+        vel_clip_min (float, optional): minimum absolute velocity (in % of x quantile) to be plotted (otherwise nan). Default to None
         acc_factor (float, optional): Ratio of frame duration by dt. Default to 1.
         gif_path (str, optional): path where to save gif. Default to "" (local path).
         axis_off (bool, optional): boolean for plotting axis. Default to False (i.e., axis is plotted).
         dpi (int): Image dpi. Default to 100.
         plot_dep_dev (bool): Condition plotting deviations from depth at the first cross-shore section. Default to False.        
+        dep_levels(np array): array with depth contour levels to be plotted. If None, no depth contours.
+        Tp (float): peak wave period (in s). If None, title only informs the time.
     """
     warnings.filterwarnings('ignore')
     # Assign xmin, xmax, dx, ymin, ymax, dy, tmin, tmax, and dt if not defined
@@ -410,9 +412,11 @@ def create_mamfv_gif(gif_name,ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None
                 y=slice(ymin,ymax,math.ceil(dy/((ds.y.isel(y=1)-ds.y.isel(y=0)).values.item()))),
                 t=slice(tmin,tmax,math.ceil(dt/((ds.t.isel(t=1)-ds.t.isel(t=0)).values.item()))))
     if vel_clip_max:
-        temp["Mamfvx"]=temp["Mamfvx"].clip(min=-vel_clip_max,max=vel_clip_max)
-        temp["Mamfvy"]=temp["Mamfvy"].clip(min=-vel_clip_max,max=vel_clip_max)
+            vel_clip_max=xr.apply_ufunc(np.abs,temp["Mamfvx"]).quantile(vel_clip_max).item()
+            temp["Mamfvx"]=temp["Mamfvx"].clip(min=-vel_clip_max,max=vel_clip_max)
+            temp["Mamfvy"]=temp["Mamfvy"].clip(min=-vel_clip_max,max=vel_clip_max)
     if vel_clip_min:
+        vel_clip_min=xr.apply_ufunc(np.abs,temp["Mamfvx"]).quantile(vel_clip_min).item()
         temp=temp.where(lambda x:(x["Mamfvx"]**2+x["Mamfvy"]**2)**0.5>=vel_clip_min,drop=True)
     if not os.path.exists(gif_name): os.mkdir(f'{gif_path}{gif_name}')
     def fig_rp(t=0):
@@ -425,18 +429,28 @@ def create_mamfv_gif(gif_name,ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None
         if plot_dep_dev:
             (-(ds.where(ds.Botlev-ds.isel(y=0).Botlev!=0,drop=True).Botlev)).plot.contourf(ax=ax[0],colors="k",add_colorbar=False,alpha=0.7)
         # plot quiver with mamfv
-        temp.isel(t=t).plot.quiver(ax=ax[0],x="x",y="y",u="Mamfvx",v="Mamfvy",scale=scale,add_guide=False)
+        quiv=temp.isel(t=t).plot.quiver(ax=ax[0],x="x",y="y",u="Mamfvx",v="Mamfvy",scale=scale,add_guide=False)
+        ax[0].quiverkey(quiv,0.9,1.01,vel_clip_max*scale,f"{vel_clip_max:.2f} m")
+        # plot depth contour
+        if dep_levels is not None:
+            x_dep_levels=[ds.isel(y=-1).where(lambda x:x["Botlev"]<=i,drop=True).isel(x=0).x.item() for i in dep_levels]
+            depcont=(ds['Botlev']).plot.contour(levels=dep_levels,colors='grey',linewidth=3,linestyles="-",ax=ax[0])
+            ax[0].clabel(depcont,fmt='-%.2f m',manual=[(i,ymin+(ymax-ymin)*0.9) for i in x_dep_levels],fontsize=14)
         # set axis properties
         ax[0].set_title("")
         if axis_off:
             ax[0].axis('off')
         else:
             [(i.set_xlabel('X [m]'),i.set_ylabel('Y [m]')) for i in ax]
-            ax[0].text(0.5,1.1,'t = {:.1f} s'.format(temp.isel(t=t).t.item()),transform=ax[0].transAxes,ha='center',va='bottom') # print time
+            if Tp:
+                ax[0].text(0.5,1.02,'t = {:.2f} min, {:.0f} Tp'.format(temp.isel(t=t).t.item()/60,temp.isel(t=t).t.item()/Tp),transform=ax[0].transAxes,ha='center',va='bottom') # print time
+            else:
+                ax[0].text(0.5,1.02,'t = {:.2f} min'.format(temp.isel(t=t).t.item()/60),transform=ax[0].transAxes,ha='center',va='bottom') # print time
         [(i.set_xlim([xmin,xmax]),i.set_ylim([ymin,ymax])) for i in ax]
         plt.savefig(f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png',dpi=dpi)
         plt.close() 
 
+    
     print(f"Creating figures - total of {len(temp.t)} time steps")
     for t in range(len(temp.t)):
         if t%50==0: print(f"{t+1}/{len(temp.t)}")
