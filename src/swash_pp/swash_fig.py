@@ -157,7 +157,7 @@ def Hs_Theta_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scal
         cmap (str): hs matplotlib colour map. Default to "jet".
     """
     warnings.filterwarnings('ignore')
-    ds["Thetax"]=np.cos(np.radians(ds["Thetam"]-180))
+    ds["Thetax"]=np.cos(np.radians(ds["Thetam"]))
     ds["Thetay"]=np.sin(np.radians(ds["Thetam"]))    
     # Assign xmin, xmax, dx, ymin, ymax, dy, tmin, tmax, and dt if not defined
     xmin = xmin or ds.x.min().item()
