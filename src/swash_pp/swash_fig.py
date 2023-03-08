@@ -199,29 +199,67 @@ def Hs_Theta_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scal
     return fig
 
 
-def plot_dt(path_run,print="PRINT"):
+def plot_dt(path_run,print="PRINT",Tp=None):
     """Plot time series of dt based on PRINT file
 
     Args:
         path_run (str): run path.
         print (str, optional): PRINT log file. Defaults to "PRINT".
+        Tp (float,optional): If provided, show twin x axis at the top with time in Tp. Default to None.
 
     Returns:
         fig: matplotlib figure with time series of dt.
     """
+    # import PRINT file
     file=[i.strip() for i in open(path_run+print,"r").readlines()]
-    dt0=[float(i.split()[2]) for i in file if "COMPUTE" in i][0]
-    tinit=[float(i.split()[1][:2])*3600 + float(i.split()[1][2:4])*60 + float(i.split()[1][4:])  for i in file if "COMPUTE" in i][0]
-    tend=[float(i.split()[4][:2])*3600 + float(i.split()[4][2:4])*60 + float(i.split()[4][4:])  for i in file if "COMPUTE" in i][0]
-    dt=[dt0]+[float(i.split("New time step:")[-1].split()[0]) for i in file if "New time step:" in i]
-    dt=np.array(dt+[dt[-1]])
-    t=np.array([tinit]+[float(file[i].split("in sec:")[-1].split()[0]) for i in range(1,len(file)) if "New time step:" in file[i-1]]+[tend])
+    dt0=[float(i.split()[2]) for i in file if "COMPUTE" in i][0] # initial time step
+    tinit=[float(i.split()[1][:2])*3600 + float(i.split()[1][2:4])*60 + float(i.split()[1][4:])  for i in file if "COMPUTE" in i][0] # initial time
+    tend=[float(i.split()[4][:2])*3600 + float(i.split()[4][2:4])*60 + float(i.split()[4][4:])  for i in file if "COMPUTE" in i][0] # end time
+    dt=[dt0]+[float(i.split("New time step:")[-1].split()[0]) for i in file if "New time step:" in i] # time steps array
+    dt=np.array(dt+[dt[-1]]) # repeat last time step
+    t=np.array([tinit]+[float(file[i].split("in sec:")[-1].split()[0]) for i in range(1,len(file)) if "New time step:" in file[i-1]]+[tend]) # time array
+    # figure
     fig,ax=plt.subplots(figsize=(10,5))
     ax.plot(t,dt,c="k",marker="o")
-    ax.grid()
-    ax.set_xlabel("t [s]")
-    ax.set_ylabel("dt [s]")
-    ax.set_xlim([t[0],t[-1]])
+    xmin,xmax,dx=t[0],t[-1],200
+    [(i.grid(),i.set_xlabel("t [s]"),i.set_ylabel("dt [s]"),i.set_xlim([xmax,xmax]),i.set_xticks(np.arange(xmin,xmax,dx))) for i in [ax]]
+    [i.ticklabel_format(axis='y',style='sci',scilimits=(0,0)) for i in [ax]]
+    if Tp: # upper x-axis with time in Tp
+        axup=ax.twiny()
+        [(i.set_xticks(np.arange(xmin,xmax,dx)/Tp),i.set_xlim([xmin/Tp,xmax/Tp]),i.set_xlabel("t [Tp]")) for i in [axup]]    
+    plt.close()
+    return fig
+
+
+def ener_enst_fig(path_run,ener_enstro="ener_enstro",Tp=None):
+    """Plot time series of dt based on PRINT file
+
+    Args:
+        path_run (str): run path.
+        ener_enstro (str, optional): file with ener_enstro. Defaults to "ener_enstro".
+        Tp (float,optional): If provided, show twin x axis at the top with time in Tp. Default to None.
+
+    Returns:
+        fig: matplotlib figure with time series of energy and enstrophy.
+    """
+    # import energy enstrophy file (from swash*_further)
+    ee=np.array([[float(i) for i in a.split()] for a in open(f'{path_run}/{ener_enstro}','r').readlines()[1:]])
+    xmin,xmax,dx=0,np.around(ee[-1,0],-2)+100,200 #time axis properties
+    # figure
+    fig,ax=plt.subplots(nrows=2,figsize=(10,7),sharex=True)
+    ax[0].plot(ee[:,0],ee[:,1],label="KE",c="k") #kinetic energy
+    ax[0].plot(ee[:,0],ee[:,2],label="PE",c="r") #potential energy
+    ax[1].plot(ee[:,0],ee[:,3],label="_nolegend_",c="k") #enstrophy
+    [(i.grid(),i.set_xlim([xmin,xmax])) for i in ax]
+    [i.set_ylabel(["$\mathrm{E\,[m^5 \cdot s^{-2}]}$","$\mathrm{Z\,[m^2 \cdot s^{-2}]}$"][j]) for j,i in enumerate(ax)]
+    ax[-1].set_xlabel("$\mathrm{t\,[s]}$")
+    [i.ticklabel_format(axis='y',style='sci',scilimits=(0,0)) for i in ax]
+    [i.legend() for i in [ax[0]]]
+    [ax[i].text(0.02,0.90,['a','b','c'][i],transform=ax[i].transAxes,ha='center',weight='bold') for i in range(len(ax))]
+    ax[-1].set_xticks(np.arange(xmin,xmax,dx))
+    if Tp: # upper x-axis with time in Tp
+        axup=ax[0].twiny()
+        [(i.set_xticks(np.arange(xmin,xmax,dx)/Tp),i.set_xlim([xmin/Tp,xmax/Tp]),i.set_xlabel("t [Tp]")) for i in [axup]]
     plt.close()
     return fig
 
