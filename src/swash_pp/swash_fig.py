@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import xarray as xr
 import numpy as np
 
-def Hs_Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=None,vel_clip_max=None,vel_clip_min=None,dpi=100,plot_dep_dev=False,dep_levels=None,hs_levels=None,hs_ticks=None,Hs0=None,cmap="jet"):
+def Hs_Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=None,vel_clip_max=0.9,vel_clip_min=0.1,plot_dep_dev=False,dep_levels=None,hs_levels=None,hs_ticks=None,Hs0=None,cmap="jet"):
     """
     Create 2D fig with significant wave height and mass flux velocities.
     Args:
@@ -13,9 +13,8 @@ def Hs_Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=
         ymin (float, optional): minimum y-position (m). If None, ds.y.min().
         ymax (float, optional): maximum y-position (m). If None, ds.y.max().
         scale (float, optional): quiver scale (larger values result in smaller arrows). Default to 1.
-        vel_clip_max (float, optional): maximum x- and y-velocity clip (in % of x quantile). Default to None (i.e., no clipping).
-        vel_clip_min (float, optional): minimum absolute velocity (in % of x quantile) to be plotted (otherwise nan). Default to None
-        dpi (int, optional): Image dpi. Default to 100.
+        vel_clip_max (float, optional): maximum x- and y-velocity clip (in % of x quantile). Default to 0.9.
+        vel_clip_min (float, optional): minimum absolute velocity (in % of x quantile) to be plotted (otherwise nan). Default to 0.1
         plot_dep_dev (bool), optional: Condition plotting deviations from depth at the first cross-shore section. Default to False.        
         dep_levels(np array, optional): array with depth contour levels (in m) to be plotted. If None, no depth contours.
         hs_levels(np array, optional): array with significant wave height contour levels (in m) to be plotted.
@@ -37,14 +36,13 @@ def Hs_Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=
                 y=slice(ymin,ymax,math.ceil(dy/((ds.y.isel(y=1)-ds.y.isel(y=0)).values.item()))))
     hs_levels = hs_levels or np.arange(0,temp["Hsig"].max().item(),temp["Hsig"].max().item()/100)
     hs_ticks = hs_ticks or np.around(np.arange(0,hs_levels.max(),hs_levels.max()/5),decimals=2)
-    if vel_clip_max:
-            vel_clip_max=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_max).item()
-            temp["Mfvx"]=temp["Mfvx"].clip(min=-vel_clip_max,max=vel_clip_max)
-            temp["Mfvy"]=temp["Mfvy"].clip(min=-vel_clip_max,max=vel_clip_max)
-    if vel_clip_min:
-        vel_clip_min=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_min).item()
-        temp=temp.where(lambda x:(x["Mfvx"]**2+x["Mfvy"]**2)**0.5>=vel_clip_min,drop=True)
-    else: vel_clip_max=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(0.9).item()
+    # velocity clipping
+    vel_clip_max=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_max).item()
+    temp["Mfvx"]=temp["Mfvx"].clip(min=-vel_clip_max,max=vel_clip_max)
+    temp["Mfvy"]=temp["Mfvy"].clip(min=-vel_clip_max,max=vel_clip_max)
+    vel_clip_min=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_min).item()
+    temp=temp.where(lambda x:(x["Mfvx"]**2+x["Mfvy"]**2)**0.5>=vel_clip_min,drop=True)
+    # figure
     fig,ax=plt.subplots(figsize=(9.2,5.2))
     ax=[ax]
     ax[0].axis('equal')
@@ -71,7 +69,7 @@ def Hs_Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=
     plt.close()
     return fig
 
-def Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,vel_clip_max=None,vel_clip_min=None,dpi=100,plot_dep_dev=False,dep_levels=None,mfvy_levels=None,mfvy_ticks=None,cmap="RdBu_r"):
+def Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,vel_clip_max=0.9,vel_clip_min=0.1,plot_dep_dev=False,dep_levels=None,mfvy_levels=None,mfvy_ticks=None,cmap="RdBu_r"):
     """
     Create 2D fig with mass flux velocities and y-component as colours.
     Args:
@@ -81,9 +79,8 @@ def Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,v
         ymin (float, optional): minimum y-position (m). If None, ds.y.min().
         ymax (float, optional): maximum y-position (m). If None, ds.y.max().
         scale (float, optional): quiver scale (larger values result in smaller arrows). Default to 1.
-        vel_clip_max (float, optional): maximum x- and y-velocity clip (in % of x quantile). Default to None (i.e., no clipping).
-        vel_clip_min (float, optional): minimum absolute velocity (in % of x quantile) to be plotted (otherwise nan). Default to None
-        dpi (int, optional): Image dpi. Default to 100.
+        vel_clip_max (float, optional): maximum x- and y-velocity clip (in % of x quantile). Default to 0.9.
+        vel_clip_min (float, optional): minimum absolute velocity (in % of x quantile) to be plotted (otherwise nan). Default to 0.1
         plot_dep_dev (bool), optional: Condition plotting deviations from depth at the first cross-shore section. Default to False.        
         dep_levels(np array, optional): array with depth contour levels (in m) to be plotted. If None, no depth contours.
         mfvy_levels(np array, optional): array with significant wave height contour levels (in m) to be plotted.
@@ -103,14 +100,13 @@ def Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,v
     mfvy_max=xr.apply_ufunc(np.abs,temp["Mfvy"]).max().item()
     mfvy_levels = mfvy_levels or np.arange(-mfvy_max,mfvy_max+mfvy_max/50,mfvy_max/50)
     mfvy_ticks = mfvy_ticks or np.around(np.arange(-mfvy_max,mfvy_max+mfvy_max/3,mfvy_max/3),decimals=2)
-    if vel_clip_max:
-            vel_clip_max=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_max).item()
-            temp["Mfvx"]=temp["Mfvx"].clip(min=-vel_clip_max,max=vel_clip_max)
-            temp["Mfvy"]=temp["Mfvy"].clip(min=-vel_clip_max,max=vel_clip_max)
-    else: vel_clip_max=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(0.9).item()
-    if vel_clip_min:
-        vel_clip_min=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_min).item()
-        temp=temp.where(lambda x:(x["Mfvx"]**2+x["Mfvy"]**2)**0.5>=vel_clip_min,drop=True)
+    # velocity clipping
+    vel_clip_max=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_max).item()
+    temp["Mfvx"]=temp["Mfvx"].clip(min=-vel_clip_max,max=vel_clip_max)
+    temp["Mfvy"]=temp["Mfvy"].clip(min=-vel_clip_max,max=vel_clip_max)
+    vel_clip_min=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_min).item()
+    temp=temp.where(lambda x:(x["Mfvx"]**2+x["Mfvy"]**2)**0.5>=vel_clip_min,drop=True)
+    # figure
     fig,ax=plt.subplots(figsize=(9.2,5.2))
     ax=[ax]
     ax[0].axis('equal')
@@ -138,7 +134,7 @@ def Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,v
     return fig
 
 
-def Hs_Theta_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,dpi=100,plot_dep_dev=False,dep_levels=None,hs_levels=None,hs_ticks=None,Hs0=None,cmap="jet"):
+def Hs_Theta_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,plot_dep_dev=False,dep_levels=None,hs_levels=None,hs_ticks=None,Hs0=None,cmap="jet"):
     """
     Create 2D fig with significant wave height and mass flux velocities.
     Args:
@@ -148,7 +144,6 @@ def Hs_Theta_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scal
         ymin (float, optional): minimum y-position (m). If None, ds.y.min().
         ymax (float, optional): maximum y-position (m). If None, ds.y.max().
         scale (float, optional): quiver scale (larger values result in smaller arrows). Default to 1.
-        dpi (int, optional): Image dpi. Default to 100.
         plot_dep_dev (bool), optional: Condition plotting deviations from depth at the first cross-shore section. Default to False.        
         dep_levels(np array, optional): array with depth contour levels (in m) to be plotted. If None, no depth contours.
         hs_levels(np array, optional): array with significant wave height contour levels (in m) to be plotted.
@@ -287,6 +282,28 @@ def Hs_wm_fig(da,dt=0.1,burst=30,Tp=2.83,Hs_wm=0.118):
         [(i.set_xticks(np.arange(xmin,xmax,dx)/Tp),i.set_xlim([xmin/Tp,xmax/Tp]),i.set_xlabel("t [Tp]")) for i in [axup]]
     plt.close()
     return fig
+
+def unify_mkv(ds,mkmax=0.1):
+    """Return dataset with merged 3D velocity profiles (Mkevx and Mkcvx --> Mkvx; Mkevy and Mkevy --> Mkvy).
+    
+    Args:
+        ds (xr dataset): dataset with "Mkcvx", "Mkcvy", "Mkevx", "Mkevy" (in m/s), and "Botlev" (in m).
+        mkmax (float): top coordinate of water (in m) (command MKmax, see swash*_further).
+        
+    Returns:
+        ds (xr dataset): dataset with "Mkvx", "Mkvy", and "z".
+    """
+    temp_zc=ds[["Mkcvx","Mkcvy"]]
+    temp_zc=temp_zc.assign_coords({"kc":-(temp_zc["kc"]-0.5)/temp_zc["kc"].max()}).rename({"kc":"k","Mkcvx":"Mkvx","Mkcvy":"Mkvy"}) #transform kc into k
+    temp_ze=ds[["Mkevx","Mkevy"]]
+    temp_ze=temp_ze.assign_coords({"ke":-(temp_ze["ke"])/temp_ze["ke"].max()}).rename({"ke":"k","Mkevx":"Mkvx","Mkevy":"Mkvy"}) #transform ke into k
+    temp=xr.merge([temp_ze,temp_zc,ds[["Botlev"]]])
+    temp=temp.assign_coords({"z":mkmax+(temp.Botlev+mkmax)*temp.k}) #write z coordinate
+    # rename attributes
+    temp["Mkvx"].attrs["standard_name"],temp["Mkvy"].attrs["standard_name"]="Mkvx","Mkvy"
+    temp["Mkvx"].attrs["long_name"],temp["Mkvy"].attrs["long_name"]="Mean layer-dependent u","Mean layer-dependent v"
+    return temp
+
 if __name__ == '__main__':
     pass
 
