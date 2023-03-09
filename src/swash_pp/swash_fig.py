@@ -287,7 +287,7 @@ def unify_mkv(ds,mkmax=0.1):
     """Return dataset with merged 3D velocity profiles (Mkevx and Mkcvx --> Mkvx; Mkevy and Mkevy --> Mkvy).
     
     Args:
-        ds (xr dataset): dataset with "Mkcvx", "Mkcvy", "Mkevx", "Mkevy" (in m/s), and "Botlev" (in m).
+        ds (xr dataset): dataset with "Mkcvx", "Mkcvy", "Mkevx", "Mkevy", "Mdavx","Mdavy", "Mfvx", "Mfvy" (in m/s), and "Botlev" (in m).
         mkmax (float): top coordinate of water (in m) (command MKmax, see swash*_further).
         
     Returns:
@@ -297,12 +297,51 @@ def unify_mkv(ds,mkmax=0.1):
     temp_zc=temp_zc.assign_coords({"kc":-(temp_zc["kc"]-0.5)/temp_zc["kc"].max()}).rename({"kc":"k","Mkcvx":"Mkvx","Mkcvy":"Mkvy"}) #transform kc into k
     temp_ze=ds[["Mkevx","Mkevy"]]
     temp_ze=temp_ze.assign_coords({"ke":-(temp_ze["ke"])/temp_ze["ke"].max()}).rename({"ke":"k","Mkevx":"Mkvx","Mkevy":"Mkvy"}) #transform ke into k
-    temp=xr.merge([temp_ze,temp_zc,ds[["Botlev"]]])
+    temp=xr.merge([temp_ze,temp_zc,ds[["Botlev","Mfvx","Mfvy","Mdavx","Mdavy"]]])
     temp=temp.assign_coords({"z":mkmax+(temp.Botlev+mkmax)*temp.k}) #write z coordinate
     # rename attributes
     temp["Mkvx"].attrs["standard_name"],temp["Mkvy"].attrs["standard_name"]="Mkvx","Mkvy"
     temp["Mkvx"].attrs["long_name"],temp["Mkvy"].attrs["long_name"]="Mean layer-dependent u","Mean layer-dependent v"
     return temp
+
+def xvel_3D(ds,mkmax=0.1,xmin=None,xmax=None,dx=None,y=0,scale=2,line_vel=False,mfvx=False,mdavx=False):
+    """
+    Create 2D fig with significant wave height and mass flux velocities.
+    Args:
+        ds (xr data structure): data structure with "Mkvx", "Mkvy", "Mdavx","Mdavy", "Mfvx", "Mfvy" (in m/s), and "Botlev" (in m).
+        xmin (float, optional): minimum x-position (m). If None, ds.x.min().
+        xmax (float, optional): maximum x-position (m). If None, ds.x.max().
+        dx (float, optional): x-grid size (m). If None, dx is calculated from ds.
+        y (float, optional): y-position (in m). Default to 0.as_integer_ratio
+        scale (float, optional): quiver scale (larger values result in smaller arrows). Default to 1.
+        line_vel (bool, optional): if True, plot vertical lines with 2DV velocities (on top of arrows). Default to False.
+        mfvx (bool, optional): if True, plot vertical dashed lines with mass-flux velocities. Default to False.
+        mdavx (bool, optional): if True, plot vertical dashed lines with mean depth-averaged velocities. Default to False.
+        """
+    xmin = xmin or ds.x.min().item()
+    xmax = xmax or ds.x.max().item()
+    dx = dx or (ds.x.isel(x=1)-ds.x.isel(x=0)).item()
+    temp=ds.sel(x=slice(xmin,xmax,math.ceil(dx/((ds.x.isel(x=1)-ds.x.isel(x=0)).values.item()))))
+    temp=temp
+    temp=unify_mkv(temp,mkmax=mkmax) # create condenses velocity profiles (interpolating Mkev and Mkcv; edges and centers)
+    temp["Mkvz"]=temp["Mkvx"]*0 # create null z component
+    # figure
+    fig,ax=plt.subplots(figsize=(20,7))
+    xarray=np.arange(xmin,xmax,dx) # create area of plot
+    for x in xarray:
+        inst=temp.sel(x=x,method="nearest").sel(y=y,method="nearest") #select data for given x and y
+        if line_vel: ax.plot(inst.x+5*scale*inst.Mkvx,inst.z,c="k",marker="o") #draw 3D vel profile; I don't get why I need 5*scale
+        quiv=inst.plot.quiver(x="x",y="z",u="Mkvx",v="Mkvz",ax=ax,pivot="tail",scale=scale,add_guide=False,width=0.002,headwidth=5)
+        ax.quiverkey(quiv,0.95,1.02,0.1,f"{0.1:.2f} m/s")
+        ax.plot([inst.x]*2,[(-inst.Botlev),mkmax],c="k",ls="--") #draw ref line
+        if mfvx: ax.plot([inst.x+inst.Mfvx*5*scale]*2,[(-inst.Botlev),mkmax],c="r",ls="--") #draw Mfvx
+        if mdavx: ax.plot([inst.x+inst.Mdavx*5*scale]*2,[(-inst.Botlev),mkmax],c="b",ls="--") #draw Mfvx
+    (-ds.Botlev).sel(x=slice(xmin,xmax)).sel(y=y,method="nearest").plot(c="k",label="Bottom") # plot dpeth profile
+    ax.axhline(0,c="grey",ls="-")
+    ax.grid()
+    ax.text(0.5,1.1,"2DV velocity profile",transform=ax.transAxes,fontsize=14,ha="center")
+    plt.close()
+    return fig
 
 if __name__ == '__main__':
     pass
