@@ -88,7 +88,7 @@ def Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,v
         cmap (str): matplotlib colour map. Default to "RdBu_r".
     """
     warnings.filterwarnings('ignore')
-    # Assign xmin, xmax, dx, ymin, ymax, dy, tmin, tmax, and dt if not defined
+    # Assign xmin, xmax, dx, ymin, ymax, and dy if not defined
     xmin = xmin or ds.x.min().item()
     xmax = xmax or ds.x.max().item()
     dx = dx or (ds.x.isel(x=1)-ds.x.isel(x=0)).item()
