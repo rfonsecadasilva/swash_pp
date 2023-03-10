@@ -268,6 +268,9 @@ def Hs_wm_fig(da,dt=0.1,burst=30,Tp=2.83,Hs_wm=0.118):
         burst (int, optional): burst length (in Tp). Defaults to 30.
         Tp (float, optional): peak wave period (in s). Defaults to 2.83.
         Hs_wm (float, optional): target significant wave height at the wave maker (in m). Defaults to 0.118.
+    
+    Returns:
+        fig: matplotlib figure with time series of significant wave height at wave maker.        
     """
     da=da.assign_coords(time=da.time*dt) # assign time axis
     da.time.attrs = {"standard_name": 'Tsec',"long_name":"Time in seconds from reference time","units":"s","axis":"time"}    
@@ -291,7 +294,7 @@ def unify_mkv(ds,mkmax=0.1):
         mkmax (float): top coordinate of water (in m) (command MKmax, see swash*_further).
         
     Returns:
-        ds (xr dataset): dataset with "Mkvx", "Mkvy", and "z".
+        ds (xr dataset): dataset with "Mkvx", "Mkvy", and "z" variables added.
     """
     temp_zc=ds[["Mkcvx","Mkcvy"]]
     temp_zc=temp_zc.assign_coords({"kc":-(temp_zc["kc"]-0.5)/temp_zc["kc"].max()}).rename({"kc":"k","Mkcvx":"Mkvx","Mkcvy":"Mkvy"}) #transform kc into k
@@ -306,23 +309,25 @@ def unify_mkv(ds,mkmax=0.1):
 
 def xvel_3D(ds,mkmax=0.1,xmin=None,xmax=None,dx=None,y=0,scale=2,line_vel=False,mfvx=False,mdavx=False):
     """
-    Create 2D fig with significant wave height and mass flux velocities.
+    Plot cross-shore view with 2DV u-velocities.
     Args:
         ds (xr data structure): data structure with "Mkvx", "Mkvy", "Mdavx","Mdavy", "Mfvx", "Mfvy" (in m/s), and "Botlev" (in m).
         xmin (float, optional): minimum x-position (m). If None, ds.x.min().
         xmax (float, optional): maximum x-position (m). If None, ds.x.max().
         dx (float, optional): x-grid size (m). If None, dx is calculated from ds.
-        y (float, optional): y-position (in m). Default to 0.as_integer_ratio
+        y (float, optional): y-position (in m). Default to 0.
         scale (float, optional): quiver scale (larger values result in smaller arrows). Default to 1.
         line_vel (bool, optional): if True, plot vertical lines with 2DV velocities (on top of arrows). Default to False.
         mfvx (bool, optional): if True, plot vertical dashed lines with mass-flux velocities. Default to False.
         mdavx (bool, optional): if True, plot vertical dashed lines with mean depth-averaged velocities. Default to False.
+
+        Returns:
+            fig: matplotlib figure with cross-shore view with 2DV u-velocities.
         """
     xmin = xmin or ds.x.min().item()
     xmax = xmax or ds.x.max().item()
     dx = dx or (ds.x.isel(x=1)-ds.x.isel(x=0)).item()
     temp=ds.sel(x=slice(xmin,xmax,math.ceil(dx/((ds.x.isel(x=1)-ds.x.isel(x=0)).values.item()))))
-    temp=temp
     temp=unify_mkv(temp,mkmax=mkmax) # create condenses velocity profiles (interpolating Mkev and Mkcv; edges and centers)
     temp["Mkvz"]=temp["Mkvx"]*0 # create null z component
     # figure
@@ -335,9 +340,51 @@ def xvel_3D(ds,mkmax=0.1,xmin=None,xmax=None,dx=None,y=0,scale=2,line_vel=False,
         ax.quiverkey(quiv,0.95,1.02,0.1,f"{0.1:.2f} m/s")
         ax.plot([inst.x]*2,[(-inst.Botlev),mkmax],c="k",ls="--") #draw ref line
         if mfvx: ax.plot([inst.x+inst.Mfvx*5*scale]*2,[(-inst.Botlev),mkmax],c="r",ls="--") #draw Mfvx
-        if mdavx: ax.plot([inst.x+inst.Mdavx*5*scale]*2,[(-inst.Botlev),mkmax],c="b",ls="--") #draw Mfvx
-    (-ds.Botlev).sel(x=slice(xmin,xmax)).sel(y=y,method="nearest").plot(c="k",label="Bottom") # plot dpeth profile
+        if mdavx: ax.plot([inst.x+inst.Mdavx*5*scale]*2,[(-inst.Botlev),mkmax],c="b",ls="--") #draw Mdavx
+    (-ds.Botlev).sel(x=slice(xmin,xmax)).sel(y=y,method="nearest").plot(c="k",label="Bottom") # plot depth profile
     ax.axhline(0,c="grey",ls="-")
+    ax.grid()
+    ax.text(0.5,1.1,"2DV velocity profile",transform=ax.transAxes,fontsize=14,ha="center")
+    plt.close()
+    return fig
+
+def yvel_3D(ds,mkmax=0.1,ymin=None,ymax=None,dy=None,x=0,scale=2,line_vel=False,mfvy=False,mdavy=False):
+    """
+    Plot alongshore view with 2DV v-velocities.
+    Args:
+        ds (xr data structure): data structure with "Mkvx", "Mkvy", "Mdavx","Mdavy", "Mfvx", "Mfvy" (in m/s), and "Botlev" (in m).
+        ymin (float, optional): minimum y-position (m). If None, ds.y.min().
+        ymax (float, optional): maximum y-position (m). If None, ds.y.max().
+        dy (float, optional): y-grid size (m). If None, dy is calculated from ds.
+        x (float, optional): x-position (in m). Default to 0.
+        scale (float, optional): quiver scale (larger values result in smaller arrows). Default to 1.
+        line_vel (bool, optional): if True, plot vertical lines with 2DV velocities (on top of arrows). Default to False.
+        mfvy (bool, optional): if True, plot vertical dashed lines with mass-flux velocities. Default to False.
+        mdavy (bool, optional): if True, plot vertical dashed lines with mean depth-averaged velocities. Default to False.
+
+        Returns:
+            fig: matplotlib figure with cross-shore view with 2DV u-velocities.
+        """
+    ymin = ymin or ds.y.min().item()
+    ymax = ymax or ds.y.max().item()
+    dy = dy or (ds.y.isel(y=1)-ds.y.isel(y=0)).item()
+    temp=ds.sel(y=slice(ymin,ymax,math.floor(dy/((ds.y.isel(y=1)-ds.y.isel(y=0)).values.item()))))
+    temp=unify_mkv(temp,mkmax=mkmax) # create condenses velocity profiles (interpolating Mkev and Mkcv; edges and centers)
+    temp["Mkvz"]=temp["Mkvx"]*0 # create null z component
+    # figure
+    fig,ax=plt.subplots(figsize=(20,7))
+    yarray=np.arange(ymin,ymax,dy) # create area of plot
+    for y in yarray:
+        inst=temp.sel(x=x,y=y,method="nearest") #select data for given x and y
+        if line_vel: ax.plot(inst.y+5*scale*inst.Mkvy,inst.z,c="k",marker="o") #draw 3D vel profile; I don't get why I need 5*scale
+        quiv=inst.plot.quiver(x="y",y="z",u="Mkvy",v="Mkvz",ax=ax,pivot="tail",scale=scale,add_guide=False,width=0.002,headwidth=5)
+        ax.quiverkey(quiv,0.95,1.02,0.1,f"{0.1:.2f} m/s")
+        ax.plot([inst.y]*2,[(-inst.Botlev),mkmax],c="k",ls="--") #draw ref line
+        if mfvy: ax.plot([inst.y+inst.Mfvy*5*scale]*2,[(-inst.Botlev),mkmax],c="r",ls="--") #draw Mfvy
+        if mdavy: ax.plot([inst.y+inst.Mdavy*5*scale]*2,[(-inst.Botlev),mkmax],c="b",ls="--") #draw Mdavx
+    (-ds.Botlev).sel(y=slice(ymin,ymax)).sel(x=x,method="nearest").plot(c="k",label="Bottom") # plot depth profile
+    ax.axhline(0,c="grey",ls="-")
+    ax.axvline(0,c="grey",ls="-")
     ax.grid()
     ax.text(0.5,1.1,"2DV velocity profile",transform=ax.transAxes,fontsize=14,ha="center")
     plt.close()
