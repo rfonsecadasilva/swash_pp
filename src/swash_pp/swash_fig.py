@@ -281,7 +281,7 @@ def Hs_wm_fig(ds,ds_bot=None,dt=0.1,burst=30,Tp=2.83,Hs_wm=0.118):
     if "Vksi_k" in ds: # reflection
         ds["station_d"]=(("stations"),(ds_bot.Botlev.interp(x=ds.station_x,y=ds.station_y)).values) #calculate depth at station
         nV=len(ds.kc) #number of vertical layers
-        ds=ds.assign_coords({"k":(1-(ds.kc/nV+1/(nV*2)))}) # create k coordinate (% height above bed)
+        ds=ds.assign_coords({"k":(1-(ds.kc/nV+1/(nV*2)))}) # create k coordinate (% height above bed; 0 for bed and 1 for water surface)
         ds["hab"]=(("stations","t","kc"),((ds.Watlev+ds.station_d)*ds.k).values,{"standard_name": "height above bed","units":"m"}) # from k = 0 (top) to k = nV-1 (near bed); velocities at mid grid
         ds=ds.isel(kc=-1,stations=0).drop("k") # bottom layer; this can be set as argument later
         etai,etar,ui,ur=lwt.etau_separation(t=ds.t.values,eta=ds.Watlev.values,u=ds.Vksi_k.values,h=(ds.Watlev.mean("t")+ds.station_d).item(),hab=ds.hab.mean("t").item(),fcutoff=0.5)
@@ -314,7 +314,7 @@ def unify_mkv(ds,mkmax=0.1):
         ds (xr dataset): dataset with "Mkvx", "Mkvy", and "z" variables added.
     """
     temp_zc=ds[["Mkcvx","Mkcvy"]]
-    temp_zc=temp_zc.assign_coords({"kc":-(temp_zc["kc"]-0.5)/temp_zc["kc"].max()}).rename({"kc":"k","Mkcvx":"Mkvx","Mkcvy":"Mkvy"}) #transform kc into k
+    temp_zc=temp_zc.assign_coords({"kc":-(temp_zc["kc"]-0.5)/temp_zc["kc"].max()}).rename({"kc":"k","Mkcvx":"Mkvx","Mkcvy":"Mkvy"}) #transform kc into k; k is % of water depth, 0 for surface and -1 for bottom
     temp_ze=ds[["Mkevx","Mkevy"]]
     temp_ze=temp_ze.assign_coords({"ke":-(temp_ze["ke"])/temp_ze["ke"].max()}).rename({"ke":"k","Mkevx":"Mkvx","Mkevy":"Mkvy"}) #transform ke into k
     temp=xr.merge([temp_ze,temp_zc,ds[["Botlev","Mfvx","Mfvy","Mdavx","Mdavy"]]])
@@ -406,6 +406,27 @@ def yvel_3D(ds,mkmax=0.1,ymin=None,ymax=None,dy=None,x=0,scale=2,line_vel=False,
     ax.text(0.5,1.1,"2DV velocity profile",transform=ax.transAxes,fontsize=14,ha="center")
     plt.close()
     return fig
+
+
+def ibp_nan(ds):
+    """
+    Plot alongshore view with 2DV v-velocities.
+    Args:
+        ds (xr data structure): data structure with "Ibp" (in m).
+
+        Returns:
+            fig: matplotlib figure with % of nan values.
+        """
+    fig,ax=plt.subplots(figsize=(10,7))
+    temp=ds.where(lambda x:np.abs(x["Ibp"])>2)
+    temp["Ibp_nan"]=(xr.apply_ufunc(np.isnan,temp["Ibp"])).sum(dim="t")/temp["Ibp"].isel(y=0).size*100
+    temp["Ibp_nan"].plot(ax=ax,c="k",clip_on=True)
+    ax.set_ylabel("% of nan values in Ibp")
+    ax.grid()
+    ax.set_ylim([-1,101])
+    plt.close()
+    return fig
+
 
 if __name__ == '__main__':
     pass
