@@ -372,7 +372,7 @@ def tab2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
                             out[swash_dict[tab_rev[i]][0]]=out[swash_dict[tab_rev[i]][0]].reshape((len(point[tab[0]][1]),len(out[swash_dict[tab_rev[i]][0]])//len(point[tab[0]][1])))
                             if swash_dict[tab_rev[i]][0] not in ["Time","Tsec"]: # exclude time as it consists of a coordinate (see below)
                                 ds.append(xr.Dataset(
-                                    data_vars={swash_dict[tab_rev[i]][0]: (("stations", "time"), out[swash_dict[tab_rev[i]][0]],
+                                    data_vars={swash_dict[tab_rev[i]][0]: (("stations", "t"), out[swash_dict[tab_rev[i]][0]],
                                                                                 {"standard_name": swash_dict[tab_rev[i]][0],
                                                                                 "long_name": swash_dict[tab_rev[i]][1],
                                                                                 "units": swash_dict[tab_rev[i]][2]})
@@ -382,7 +382,7 @@ def tab2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
                         else:
                             if swash_dict[tab_rev[i]][0] not in ["Time","Tsec"]:
                                 ds.append(xr.Dataset(
-                                    data_vars={swash_dict[tab_rev[i]][0]: (("time"), out[swash_dict[tab_rev[i]][0]],
+                                    data_vars={swash_dict[tab_rev[i]][0]: (("t"), out[swash_dict[tab_rev[i]][0]],
                                                                                 {"standard_name": swash_dict[tab_rev[i]][0],
                                                                                 "long_name": swash_dict[tab_rev[i]][1],
                                                                                 "units": swash_dict[tab_rev[i]][2]})
@@ -392,7 +392,7 @@ def tab2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
                     else: # reshape into station, time and k
                         out[swash_dict[tab_rev[i]][0]]=out[swash_dict[tab_rev[i]][0]].reshape((len(point[tab[0]][1]),len(out[swash_dict[tab_rev[i]][0]])//len(point[tab[0]][1])//ndim[i],ndim[i]))
                         ds.append(xr.Dataset(
-                                    data_vars={swash_dict[tab_rev[i]][0]: (("stations","time",["kc","ke"][swash_dict[tab_rev[i]][3] in out_ind["sta_ke"]+out_ind["ins_ke"]]), out[swash_dict[tab_rev[i]][0]],
+                                    data_vars={swash_dict[tab_rev[i]][0]: (("stations","t",["kc","ke"][swash_dict[tab_rev[i]][3] in out_ind["sta_ke"]+out_ind["ins_ke"]]), out[swash_dict[tab_rev[i]][0]],
                                                                                 {"standard_name": swash_dict[tab_rev[i]][0],
                                                                                 "long_name": swash_dict[tab_rev[i]][1],
                                                                                 "units": swash_dict[tab_rev[i]][2]})
@@ -402,14 +402,14 @@ def tab2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
                 ds=xr.merge(ds)
                 if 'Time' in out.keys():
                     t="Time"
-                    if tab[0] != "'NOGRID'": ds=ds.assign_coords(time=out[t][0,:])
-                    else: ds=ds.assign_coords(time=out[t][:])
-                    ds.time.attrs = {"standard_name": t,"long_name": swash_dict['TIME'][1], "units": swash_dict["TIME"][2],"axis":"time"}
+                    if tab[0] != "'NOGRID'": ds=ds.assign_coords(t=out[t][0,:])
+                    else: ds=ds.assign_coords(t=out[t][:])
+                    ds.t.attrs = {"standard_name": t,"long_name": swash_dict['TIME'][1], "units": swash_dict["TIME"][2],"axis":"t"}
                 elif 'Tsec' in out:
                     t="Tsec"
-                    if tab[0] != "'NOGRID'": ds=ds.assign_coords(time=out[t][0,:])
-                    else: ds=ds.assign_coords(time=out[t][:])
-                    ds.time.attrs = {"standard_name": t,"long_name": swash_dict["TSEC"][1], "units": swash_dict["TSEC"][2],"axis":"time"}
+                    if tab[0] != "'NOGRID'": ds=ds.assign_coords(t=out[t][0,:])
+                    else: ds=ds.assign_coords(t=out[t][:])
+                    ds.t.attrs = {"standard_name": t,"long_name": swash_dict["TSEC"][1], "units": swash_dict["TSEC"][2],"axis":"t"}
                 if tab[0] != "'NOGRID'":
                     if len(point[tab[0]][0])==len(point[tab[0]][1]):
                         ds['station_y']=(("stations"),point[tab[0]][0])
