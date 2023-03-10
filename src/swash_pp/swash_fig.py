@@ -2,6 +2,7 @@ import warnings, math
 import matplotlib.pyplot as plt
 import xarray as xr
 import numpy as np
+import swash_pp.lwt as lwt
 
 def Hs_Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=None,vel_clip_max=0.9,vel_clip_min=0.1,plot_dep_dev=False,dep_levels=None,hs_levels=None,hs_ticks=None,Hs0=None,cmap="jet"):
     """
@@ -258,12 +259,13 @@ def ener_enst_fig(path_run,ener_enstro="ener_enstro",Tp=None):
     plt.close()
     return fig
 
-def Hs_wm_fig(ds,dt=0.1,burst=30,Tp=2.83,Hs_wm=0.118):
+def Hs_wm_fig(ds,ds_bot=None,dt=0.1,burst=30,Tp=2.83,Hs_wm=0.118):
     """Plot time series of modelled (total) Hs with prescribed time window.
     Note: later separate incoming and outgoing components.
 
     Args:
-        ds (xr DataArray): Dataset with 'Watlev' (water levels at wave maker) (in m)
+        ds (xr DataArray): Dataset with 'Watlev' (water levels at wave maker) (in m). If 'Vksi_k' (velocities at wave maker) (in m/s), calculate 
+        ds_bot (xr DataArray): Dataset with 'Botlev' (bottom depth) (in m); only used for reflection calculation. Default to None (i.e., reflection is not calculated)
         dt (float, optional): time step (in s). Defaults to 0.1.
         burst (int, optional): burst length (in Tp). Defaults to 30.
         Tp (float, optional): peak wave period (in s). Defaults to 2.83.
@@ -272,12 +274,27 @@ def Hs_wm_fig(ds,dt=0.1,burst=30,Tp=2.83,Hs_wm=0.118):
     Returns:
         fig: matplotlib figure with time series of significant wave height at wave maker.        
     """
+    warnings.filterwarnings('ignore')
     ds=ds.assign_coords(t=ds.t*dt) # assign time axis
     ds.t.attrs = {"standard_name": 'Tsec',"long_name":"Time in seconds from reference time","units":"s","axis":"t"}    
     xmin,xmax,dx=ds.t.min().item(),np.around(ds.t.max().item()),200 #time axis properties
+    if "Vksi_k" in ds: # reflection
+        ds["station_d"]=(("stations"),(ds_bot.Botlev.interp(x=ds.station_x,y=ds.station_y)).values) #calculate depth at station
+        nV=len(ds.kc) #number of vertical layers
+        ds=ds.assign_coords({"k":(1-(ds.kc/nV+1/(nV*2)))}) # create k coordinate (% height above bed)
+        ds["hab"]=(("stations","t","kc"),((ds.Watlev+ds.station_d)*ds.k).values,{"standard_name": "height above bed","units":"m"}) # from k = 0 (top) to k = nV-1 (near bed); velocities at mid grid
+        ds=ds.isel(kc=-1,stations=0).drop("k") # bottom layer; this can be set as argument later
+        etai,etar,ui,ur=lwt.etau_separation(t=ds.t.values,eta=ds.Watlev.values,u=ds.Vksi_k.values,h=(ds.Watlev.mean("t")+ds.station_d).item(),hab=ds.hab.mean("t").item(),fcutoff=0.5)
+        ds["Watlev_i"]=("t",etai.real,{"standard_name": "incident water level","units":"m"})
+        ds["Watlev_r"]=("t",etar.real,{"standard_name": "reflected water level","units":"m"})
+        ds["Vksi_k_i"]=("t",ui.real,{"standard_name": "incident velocity","units":"m/s"})
+        ds["Vksi_k_r"]=("t",ur.real,{"standard_name": "reflected velocity","units":"m/s"})
     # figure
     fig,ax=plt.subplots(figsize=(10,7))
-    (4*ds.Watlev.rolling(t=int(Tp*burst/dt),center=True).std()).plot(ax=ax,c="k",label=f"Modelled (window of {burst:.0f} Tps)")
+    (4*ds.Watlev.rolling(t=int(Tp*burst/dt),center=True).std()).plot(ax=ax,c="k",label=f"Total Hs (window of {burst:.0f} Tps)")
+    if "Vksi_k" in ds: # total
+        (4*ds.Watlev_i.rolling(t=int(Tp*burst/dt),center=True).std()).plot(ax=ax,c="r",label=f"Hs_i (window of {burst:.0f} Tps)")
+        (4*ds.Watlev_r.rolling(t=int(Tp*burst/dt),center=True).std()).plot(ax=ax,c="b",label=f"Hs_r (window of {burst:.0f} Tps)")
     ax.axhline(Hs_wm,c="k",ls="--",label="Target") #prescribed Hs
     [(i.set_xticks(np.arange(xmin,xmax,dx)),ax.set_ylabel("Hs [m] at wave maker"),i.grid(),i.legend(),i.set_xlim([xmin,xmax])) for i in [ax]]
     if Tp: # upper x-axis with time in Tp
