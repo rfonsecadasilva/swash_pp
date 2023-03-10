@@ -258,12 +258,12 @@ def ener_enst_fig(path_run,ener_enstro="ener_enstro",Tp=None):
     plt.close()
     return fig
 
-def Hs_wm_fig(da,dt=0.1,burst=30,Tp=2.83,Hs_wm=0.118):
+def Hs_wm_fig(ds,dt=0.1,burst=30,Tp=2.83,Hs_wm=0.118):
     """Plot time series of modelled (total) Hs with prescribed time window.
     Note: later separate incoming and outgoing components.
 
     Args:
-        da (xr DataArray): DataArray with 'Watlev' (water levels at wave maker) (in m)
+        ds (xr DataArray): Dataset with 'Watlev' (water levels at wave maker) (in m)
         dt (float, optional): time step (in s). Defaults to 0.1.
         burst (int, optional): burst length (in Tp). Defaults to 30.
         Tp (float, optional): peak wave period (in s). Defaults to 2.83.
@@ -272,12 +272,12 @@ def Hs_wm_fig(da,dt=0.1,burst=30,Tp=2.83,Hs_wm=0.118):
     Returns:
         fig: matplotlib figure with time series of significant wave height at wave maker.        
     """
-    da=da.assign_coords(time=da.time*dt) # assign time axis
-    da.time.attrs = {"standard_name": 'Tsec',"long_name":"Time in seconds from reference time","units":"s","axis":"time"}    
-    xmin,xmax,dx=da.time.min().item(),np.around(da.time.max().item()),200 #time axis properties
+    ds=ds.assign_coords(t=ds.t*dt) # assign time axis
+    ds.t.attrs = {"standard_name": 'Tsec',"long_name":"Time in seconds from reference time","units":"s","axis":"t"}    
+    xmin,xmax,dx=ds.t.min().item(),np.around(ds.t.max().item()),200 #time axis properties
     # figure
     fig,ax=plt.subplots(figsize=(10,7))
-    (4*da.Watlev.rolling(time=int(Tp*burst/dt),center=True).std()).plot(ax=ax,c="k",label=f"Modelled (window of {burst:.0f} Tps)")
+    (4*ds.Watlev.rolling(t=int(Tp*burst/dt),center=True).std()).plot(ax=ax,c="k",label=f"Modelled (window of {burst:.0f} Tps)")
     ax.axhline(Hs_wm,c="k",ls="--",label="Target") #prescribed Hs
     [(i.set_xticks(np.arange(xmin,xmax,dx)),ax.set_ylabel("Hs [m] at wave maker"),i.grid(),i.legend(),i.set_xlim([xmin,xmax])) for i in [ax]]
     if Tp: # upper x-axis with time in Tp
