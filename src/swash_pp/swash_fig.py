@@ -35,8 +35,8 @@ def Hs_Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=
          ds["Hsig"]=ds["Hsig"]/Hs0
     temp=ds.sel(x=slice(xmin,xmax,math.ceil(dx/((ds.x.isel(x=1)-ds.x.isel(x=0)).values.item()))),
                 y=slice(ymin,ymax,math.ceil(dy/((ds.y.isel(y=1)-ds.y.isel(y=0)).values.item()))))
-    hs_levels = hs_levels or np.arange(0,temp["Hsig"].max().item(),temp["Hsig"].max().item()/100)
-    hs_ticks = hs_ticks or np.around(np.arange(0,hs_levels.max(),hs_levels.max()/5),decimals=2)
+    hs_levels = hs_levels or np.arange(0,ds["Hsig"].max().item(),ds["Hsig"].max().item()/100)
+    hs_ticks = hs_ticks or np.around(np.arange(0,hs_levels.max()+hs_levels.max()/5,hs_levels.max()/5),decimals=3)
     # velocity clipping
     vel_clip_max=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_max).item()
     temp["Mfvx"]=temp["Mfvx"].clip(min=-vel_clip_max,max=vel_clip_max)
@@ -64,9 +64,9 @@ def Hs_Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=
         depcont=(ds['Botlev']).plot.contour(levels=dep_levels,colors='grey',linewidth=3,linestyles="-",ax=ax[0])
         ax[0].clabel(depcont,fmt='-%.2f m',manual=[(i,ymin+(ymax-ymin)*0.9) for i in x_dep_levels],fontsize=14)
     # set axis properties
-    ax[0].set_title("")
     [(i.set_xlabel('X [m]'),i.set_ylabel('Y [m]')) for i in ax]
     [(i.set_xlim([xmin,xmax]),i.set_ylim([ymin,ymax])) for i in ax]
+    ax[0].text(0,1.5,"Hs_Mfv",transform=ax[0].transAxes)
     plt.close()
     return fig
 
@@ -98,9 +98,9 @@ def Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,v
     dy = dy or (ds.y.isel(y=1)-ds.y.isel(y=0)).item()    
     temp=ds.sel(x=slice(xmin,xmax,math.ceil(dx/((ds.x.isel(x=1)-ds.x.isel(x=0)).values.item()))),
                 y=slice(ymin,ymax,math.ceil(dy/((ds.y.isel(y=1)-ds.y.isel(y=0)).values.item()))))
-    mfvy_max=xr.apply_ufunc(np.abs,temp["Mfvy"]).max().item()
+    mfvy_max=xr.apply_ufunc(np.abs,ds["Mfvy"]).max().item()
     mfvy_levels = mfvy_levels or np.arange(-mfvy_max,mfvy_max+mfvy_max/50,mfvy_max/50)
-    mfvy_ticks = mfvy_ticks or np.around(np.arange(-mfvy_max,mfvy_max+mfvy_max/3,mfvy_max/3),decimals=2)
+    mfvy_ticks = mfvy_ticks or np.around(np.arange(-mfvy_max,mfvy_max+mfvy_max/3,mfvy_max/3),decimals=3)
     # velocity clipping
     vel_clip_max=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_max).item()
     temp["Mfvx"]=temp["Mfvx"].clip(min=-vel_clip_max,max=vel_clip_max)
@@ -110,7 +110,6 @@ def Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,v
     # figure
     fig,ax=plt.subplots(figsize=(9.2,5.2))
     ax=[ax]
-    ax[0].axis('equal')
     # plot hs
     mfvy=ds["Mfvy"].plot(ax=ax[0],cmap=cmap,levels=mfvy_levels,add_colorbar=False,clip_on=True)
     fig.colorbar(mfvy,ticks=mfvy_ticks,label=r'$\mathrm{ V [m \cdot s^{-1}]}$ ',orientation='horizontal',cax=ax[0].inset_axes([0.05,1.05,0.85,0.05],transform=ax[0].transAxes),ticklocation='top')
@@ -128,9 +127,10 @@ def Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,v
         depcont=(ds['Botlev']).plot.contour(levels=dep_levels,colors='grey',linewidth=3,linestyles="-",ax=ax[0])
         ax[0].clabel(depcont,fmt='-%.2f m',manual=[(i,ymin+(ymax-ymin)*0.9) for i in x_dep_levels],fontsize=14)
     # set axis properties
-    ax[0].set_title("")
+    ax[0].set_title("Mfv_Mfvy")
     [(i.set_xlabel('X [m]'),i.set_ylabel('Y [m]')) for i in ax]
     [(i.set_xlim([xmin,xmax]),i.set_ylim([ymin,ymax])) for i in ax]
+    ax[0].axis('equal')
     plt.close()
     return fig
 
@@ -166,8 +166,8 @@ def Hs_Theta_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scal
          ds["Hsig"]=ds["Hsig"]/Hs0
     temp=ds.sel(x=slice(xmin,xmax,math.ceil(dx/((ds.x.isel(x=1)-ds.x.isel(x=0)).values.item()))),
                 y=slice(ymin,ymax,math.ceil(dy/((ds.y.isel(y=1)-ds.y.isel(y=0)).values.item()))))
-    hs_levels = hs_levels or np.arange(0,temp["Hsig"].max().item(),temp["Hsig"].max().item()/100)
-    hs_ticks = hs_ticks or np.around(np.arange(0,hs_levels.max(),hs_levels.max()/5),decimals=2)
+    hs_levels = hs_levels or np.arange(0,ds["Hsig"].max().item()+ds["Hsig"].max().item()/100,ds["Hsig"].max().item()/100)
+    hs_ticks = hs_ticks or np.around(np.arange(0,hs_levels.max()+hs_levels.max()/5,hs_levels.max()/5),decimals=3)
     fig,ax=plt.subplots(figsize=(9.2,5.2))
     ax=[ax]
     ax[0].axis('equal')
@@ -181,14 +181,14 @@ def Hs_Theta_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scal
         (-(ds.where(ds.Botlev-ds.isel(y=0).Botlev!=0,drop=True).Botlev)).plot.contourf(ax=ax[0],colors="k",add_colorbar=False)
     # plot quiver with Thetam
     quiv=temp.plot.quiver(ax=ax[0],x="x",y="y",u="Thetax",v="Thetay",scale=scale,add_guide=False)
-    ax[0].quiverkey(quiv,0.95,1.02,1*scale,"$\\theta_M$")
+    ax[0].quiverkey(quiv,0.95,1.02,1,"$\\theta_M$")
     # plot depth contour
     if dep_levels is not None:
         x_dep_levels=[ds.isel(y=-1).where(lambda x:x["Botlev"]<=i,drop=True).isel(x=0).x.item() for i in dep_levels]
         depcont=(ds['Botlev']).plot.contour(levels=dep_levels,colors='grey',linewidth=3,linestyles="-",ax=ax[0])
         ax[0].clabel(depcont,fmt='-%.2f m',manual=[(i,ymin+(ymax-ymin)*0.9) for i in x_dep_levels],fontsize=14)
     # set axis properties
-    ax[0].set_title("")
+    ax[0].set_title("Hs_Theta")
     [(i.set_xlabel('X [m]'),i.set_ylabel('Y [m]')) for i in ax]
     [(i.set_xlim([xmin,xmax]),i.set_ylim([ymin,ymax])) for i in ax]
     plt.close()
@@ -456,12 +456,13 @@ def runup_fig(R2,Ibp,R2_S06,max_z,exc_value=10,ymin=None,ymax=None,dy=None):
         Ibp=Ibp.where(lambda x:np.abs(x)<exc_value,drop=True)    
     fig,ax=plt.subplots(figsize=(10,7))
     R2.plot(c="k",label="R2")
-    (Ibp.mean(dim="t")+2*Ibp.std(dim="t")).plot(c="gray",label="R2_spec")
+    (Ibp.mean(dim="t")+2*Ibp.std(dim="t")).plot(c="k",label="R2_spec",ls="--")
+    ax.axhline(y=R2_S06,c="k",label="R2_S06",ls="-.")
     Ibp.max(dim="t").plot(c="g",label="Max BWL")
     Ibp.min(dim="t").plot(c="g",ls="--",label="Min BWL")
-    ax.axhline(y=R2_S06,c="r",label="R2_S06")
+    Ibp.mean(dim="t").plot(c="r",label="Setup")
     ax.axhline(y=max_z,c="b",label="Max z")
-    [(i.grid(),i.set_ylabel("z [m]"),i.legend(ncol=6),i.set_title(""),i.set_xlim([ymin,ymax])) for i in [ax]]
+    [(i.grid(),i.set_ylabel("z [m]"),i.legend(ncol=7),i.set_title(""),i.set_xlim([ymin,ymax])) for i in [ax]]
     plt.close()
     return fig
 
