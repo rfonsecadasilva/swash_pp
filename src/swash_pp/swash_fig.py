@@ -408,17 +408,18 @@ def yvel_3D(ds,mkmax=0.1,ymin=None,ymax=None,dy=None,x=0,scale=2,line_vel=False,
     return fig
 
 
-def ibp_nan(ds):
+def ibp_nan(ds,exc_value=10):
     """
     Plot alongshore view with 2DV v-velocities.
     Args:
         ds (xr data structure): data structure with "Ibp" (in m).
+        exc_value (float): Exception value for runup (abs values greater than exc_value are excluded; in m). Default to 10.
 
         Returns:
             fig: matplotlib figure with % of nan values.
         """
     fig,ax=plt.subplots(figsize=(10,7))
-    temp=ds.where(lambda x:np.abs(x["Ibp"])>2)
+    temp=ds.where(lambda x:np.abs(x["Ibp"])>exc_value)
     temp["Ibp_nan"]=(xr.apply_ufunc(np.isnan,temp["Ibp"])).sum(dim="t")/temp["Ibp"].isel(y=0).size*100
     temp["Ibp_nan"].plot(ax=ax,c="k",clip_on=True)
     ax.set_ylabel("% of nan values in Ibp")
