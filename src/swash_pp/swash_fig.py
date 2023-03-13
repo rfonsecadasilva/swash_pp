@@ -413,7 +413,7 @@ def ibp_nan(ds,exc_value=10):
     Plot alongshore view with 2DV v-velocities.
     Args:
         ds (xr data structure): data structure with "Ibp" (in m).
-        exc_value (float): Exception value for runup (abs values greater than exc_value are excluded; in m). Default to 10.
+        exc_value (float, optional): Exception value for runup (abs values greater than exc_value are excluded; in m). Default to 10.
 
         Returns:
             fig: matplotlib figure with % of nan values.
@@ -428,6 +428,42 @@ def ibp_nan(ds,exc_value=10):
     plt.close()
     return fig
 
+def runup_fig(R2,Ibp,R2_S06,max_z,exc_value=10,ymin=None,ymax=None,dy=None):
+    """Plot along-section of runup properties.
+
+    Args:
+        R2 (xr DataArray): xr dataarray with 2% runup (in m).
+        Ibp (xr DataArray): xr dataarray with Ibp (in m).
+        R2_S06 (float): R2 according to Stockdon (2006).
+        max_z (float): maximum bottom level (in m)
+        exc_value (float, optional): Exception value for runup (abs values greater than exc_value are excluded; in m). Default to 10.
+        ymin (float, optional): minimum y-position (m). If None, ds.y.min().
+        ymax (float, optional): maximum y-position (m). If None, ds.y.max().
+        dy (float, optional): y-grid size (m). If None, dy is calculated from ds.        
+
+    Return:
+        figure with along-section of runup properties.
+    """
+    ymin = ymin or R2.y.min().item()
+    ymax = ymax or R2.y.max().item()
+    dy = dy or (R2.y.isel(y=1)-R2.y.isel(y=0)).item()
+    R2=R2.sel(y=slice(ymin,ymax,math.floor(dy/((R2.y.isel(y=1)-R2.y.isel(y=0)).values.item()))))    
+    Ibp=Ibp.sel(y=slice(ymin,ymax,math.floor(dy/((Ibp.y.isel(y=1)-Ibp.y.isel(y=0)).values.item()))))    
+    if exc_value:
+        bad_data=(xr.apply_ufunc(np.isnan,Ibp.where(lambda x:np.abs(x)>exc_value)).sum()/Ibp.size*100).values.item()
+        if bad_data!=100:
+            print(f'{100-bad_data:.1f} % of runup data is corrupted')
+        Ibp=Ibp.where(lambda x:np.abs(x)<exc_value,drop=True)    
+    fig,ax=plt.subplots(figsize=(10,7))
+    R2.plot(c="k",label="R2")
+    (Ibp.mean(dim="t")+2*Ibp.std(dim="t")).plot(c="gray",label="R2_spec")
+    Ibp.max(dim="t").plot(c="g",label="Max BWL")
+    Ibp.min(dim="t").plot(c="g",ls="--",label="Min BWL")
+    ax.axhline(y=R2_S06,c="r",label="R2_S06")
+    ax.axhline(y=max_z,c="b",label="Max z")
+    [(i.grid(),i.set_ylabel("z [m]"),i.legend(ncol=6),i.set_title(""),i.set_xlim([ymin,ymax])) for i in [ax]]
+    plt.close()
+    return fig
 
 if __name__ == '__main__':
     pass
