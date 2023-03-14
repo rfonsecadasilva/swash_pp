@@ -212,8 +212,9 @@ def dt_fig(path_run,print="PRINT",Tp=None):
     tinit=[float(i.split()[1][:2])*3600 + float(i.split()[1][2:4])*60 + float(i.split()[1][4:])  for i in file if "COMPUTE" in i][0] # initial time
     tend=[float(i.split()[4][:2])*3600 + float(i.split()[4][2:4])*60 + float(i.split()[4][4:])  for i in file if "COMPUTE" in i][0] # end time
     dt=[dt0]+[float(i.split("New time step:")[-1].split()[0]) for i in file if "New time step:" in i] # time steps array
-    dt=np.array(dt+[dt[-1]]) # repeat last time step
-    t=np.array([tinit]+[float(file[i].split("in sec:")[-1].split()[0]) for i in range(1,len(file)) if "New time step:" in file[i-1]]+[tend]) # time array
+    dt=np.repeat(np.array(dt),2)
+    t=[[tinit]]+[[float(file[i].split("in sec:")[-1].split()[0]),float(file[i-2].split("in sec:")[-1].split()[0])] for i in range(2,len(file)) if "New time step:" in file[i-1]]+[[tend]] # time array
+    t= np.array( [item for sublist in t for item in sublist])
     # figure
     fig,ax=plt.subplots(figsize=(10,5))
     ax.plot(t,dt,c="k",marker="o")
