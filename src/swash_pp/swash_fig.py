@@ -44,7 +44,7 @@ def Hs_Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=
     vel_clip_min=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_min).item()
     temp=temp.where(lambda x:(x["Mfvx"]**2+x["Mfvy"]**2)**0.5>=vel_clip_min,drop=True)
     # figure
-    fig,ax=plt.subplots(figsize=(9.2,5.2))
+    fig,ax=plt.subplots(figsize=(9.2,9.2*(ymax-ymin)/(xmax-xmin)))
     ax=[ax]
     ax[0].axis('equal')
     # plot hs
@@ -57,7 +57,7 @@ def Hs_Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=
         (-(ds.where(ds.Botlev-ds.isel(y=0).Botlev!=0,drop=True).Botlev)).plot.contourf(ax=ax[0],colors="k",add_colorbar=False)
     # plot quiver with Mfv
     quiv=temp.plot.quiver(ax=ax[0],x="x",y="y",u="Mfvx",v="Mfvy",scale=scale,add_guide=False)
-    ax[0].quiverkey(quiv,0.95,1.02,vel_clip_max*scale,f"{vel_clip_max:.2f} m/s")
+    ax[0].quiverkey(quiv,0.95,1.02,vel_clip_max,f"{vel_clip_max:.2f} m/s")
     # plot depth contour
     if dep_levels is not None:
         x_dep_levels=[ds.isel(y=-1).where(lambda x:x["Botlev"]<=i,drop=True).isel(x=0).x.item() for i in dep_levels]
@@ -66,7 +66,7 @@ def Hs_Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=
     # set axis properties
     [(i.set_xlabel('X [m]'),i.set_ylabel('Y [m]')) for i in ax]
     [(i.set_xlim([xmin,xmax]),i.set_ylim([ymin,ymax])) for i in ax]
-    ax[0].text(0,1.5,"Hs_Mfv",transform=ax[0].transAxes)
+    fig.tight_layout()
     plt.close()
     return fig
 
@@ -84,8 +84,8 @@ def Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,v
         vel_clip_min (float, optional): minimum absolute velocity (in % of x quantile) to be plotted (otherwise nan). Default to 0.1
         plot_dep_dev (bool), optional: Condition plotting deviations from depth at the first cross-shore section. Default to False.        
         dep_levels(np array, optional): array with depth contour levels (in m) to be plotted. If None, no depth contours.
-        mfvy_levels(np array, optional): array with significant wave height contour levels (in m) to be plotted.
-        mfvy_ticks(np array, optional): array with significant wave height contour levels ticks (in m) to be plotted.
+        mfvy_levels(np array, optional): array with V-currents contour levels (in m) to be plotted.
+        mfvy_ticks(np array, optional): array with V-currents contour levels ticks (in m) to be plotted.
         cmap (str): matplotlib colour map. Default to "RdBu_r".
     """
     warnings.filterwarnings('ignore')
@@ -108,7 +108,7 @@ def Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,v
     vel_clip_min=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_min).item()
     temp=temp.where(lambda x:(x["Mfvx"]**2+x["Mfvy"]**2)**0.5>=vel_clip_min,drop=True)
     # figure
-    fig,ax=plt.subplots(figsize=(9.2,5.2))
+    fig,ax=plt.subplots(figsize=(9.2,9.2*(ymax-ymin)/(xmax-xmin)))
     ax=[ax]
     # plot hs
     mfvy=ds["Mfvy"].plot(ax=ax[0],cmap=cmap,levels=mfvy_levels,add_colorbar=False,clip_on=True)
@@ -120,17 +120,81 @@ def Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,v
         (-(ds.where(ds.Botlev-ds.isel(y=0).Botlev!=0,drop=True).Botlev)).plot.contourf(ax=ax[0],colors="k",add_colorbar=False)
     # plot quiver with Mfv
     quiv=temp.plot.quiver(ax=ax[0],x="x",y="y",u="Mfvx",v="Mfvy",scale=scale,add_guide=False)
-    ax[0].quiverkey(quiv,0.95,1.02,vel_clip_max*scale,f"{vel_clip_max:.2f} m/s")
+    ax[0].quiverkey(quiv,0.95,1.02,vel_clip_max,f"{vel_clip_max:.2f} m/s")
     # plot depth contour
     if dep_levels is not None:
         x_dep_levels=[ds.isel(y=-1).where(lambda x:x["Botlev"]<=i,drop=True).isel(x=0).x.item() for i in dep_levels]
         depcont=(ds['Botlev']).plot.contour(levels=dep_levels,colors='grey',linewidth=3,linestyles="-",ax=ax[0])
         ax[0].clabel(depcont,fmt='-%.2f m',manual=[(i,ymin+(ymax-ymin)*0.9) for i in x_dep_levels],fontsize=14)
     # set axis properties
-    ax[0].set_title("Mfv_Mfvy")
     [(i.set_xlabel('X [m]'),i.set_ylabel('Y [m]')) for i in ax]
     [(i.set_xlim([xmin,xmax]),i.set_ylim([ymin,ymax])) for i in ax]
     ax[0].axis('equal')
+    fig.tight_layout()
+    plt.close()
+    return fig
+
+def MV_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,vel_clip_max=0.9,vel_clip_min=0.1,plot_dep_dev=False,dep_levels=None,mveta_levels=None,mveta_ticks=None,cmap="RdBu_r"):
+    """
+    Create 2D fig with mass flux velocities and y-component as colours.
+    Args:
+        ds (xr data structure): Single data structure with 'x', 'Botlev', 'MVksi' and MVeta'.
+        xmin (float, optional): minimum x-position (m). If None, ds.x.min().
+        xmax (float, optional): maximum x-position (m). If None, ds.x.max().
+        ymin (float, optional): minimum y-position (m). If None, ds.y.min().
+        ymax (float, optional): maximum y-position (m). If None, ds.y.max().
+        scale (float, optional): quiver scale (larger values result in smaller arrows). Default to 1.
+        vel_clip_max (float, optional): maximum x- and y-velocity clip (in % of x quantile). Default to 0.9.
+        vel_clip_min (float, optional): minimum absolute velocity (in % of x quantile) to be plotted (otherwise nan). Default to 0.1
+        plot_dep_dev (bool), optional: Condition plotting deviations from depth at the first cross-shore section. Default to False.        
+        dep_levels(np array, optional): array with depth contour levels (in m) to be plotted. If None, no depth contours.
+        mveta_levels(np array, optional): array with V-currents contour levels (in m) to be plotted.
+        mveta_ticks(np array, optional): array with V-currents contour levels ticks (in m) to be plotted.
+        cmap (str): matplotlib colour map. Default to "RdBu_r".
+    """
+    warnings.filterwarnings('ignore')
+    # Assign xmin, xmax, dx, ymin, ymax, and dy if not defined
+    xmin = xmin or ds.x.min().item()
+    xmax = xmax or ds.x.max().item()
+    dx = dx or (ds.x.isel(x=1)-ds.x.isel(x=0)).item()
+    ymin = ymin or ds.y.min().item()
+    ymax = ymax or ds.y.max().item()    
+    dy = dy or (ds.y.isel(y=1)-ds.y.isel(y=0)).item()    
+    temp=ds.sel(x=slice(xmin,xmax,math.ceil(dx/((ds.x.isel(x=1)-ds.x.isel(x=0)).values.item()))),
+                y=slice(ymin,ymax,math.ceil(dy/((ds.y.isel(y=1)-ds.y.isel(y=0)).values.item()))))
+    mveta_max=xr.apply_ufunc(np.abs,ds["MVeta"]).max().item()
+    mveta_levels = mveta_levels or np.arange(-mveta_max,mveta_max+mveta_max/50,mveta_max/50)
+    mveta_ticks = mveta_ticks or np.around(np.arange(-mveta_max,mveta_max+mveta_max/3,mveta_max/3),decimals=3)
+    # velocity clipping
+    vel_clip_max=xr.apply_ufunc(np.abs,temp["MVksi"]).quantile(vel_clip_max).item()
+    temp["MVksi"]=temp["MVksi"].clip(min=-vel_clip_max,max=vel_clip_max)
+    temp["MVeta"]=temp["MVeta"].clip(min=-vel_clip_max,max=vel_clip_max)
+    vel_clip_min=xr.apply_ufunc(np.abs,temp["MVksi"]).quantile(vel_clip_min).item()
+    temp=temp.where(lambda x:(x["MVksi"]**2+x["MVeta"]**2)**0.5>=vel_clip_min,drop=True)
+    # figure
+    fig,ax=plt.subplots(figsize=(9.2,9.2*(ymax-ymin)/(xmax-xmin)))
+    ax=[ax]
+    # plot hs
+    mveta=ds["MVeta"].plot(ax=ax[0],cmap=cmap,levels=mveta_levels,add_colorbar=False,clip_on=True)
+    fig.colorbar(mveta,ticks=mveta_ticks,label=r'$\mathrm{ V [m \cdot s^{-1}]}$ ',orientation='horizontal',cax=ax[0].inset_axes([0.05,1.05,0.85,0.05],transform=ax[0].transAxes),ticklocation='top')
+    # plot land surface
+    ax[0].fill_betweenx(ds.y,ds.isel(y=0).where(lambda x:x.Botlev<=0,drop=True).isel(x=0).x.item(),xmax,color="peachpuff",clip_on=True)
+    # plot reef contour
+    if plot_dep_dev:
+        (-(ds.where(ds.Botlev-ds.isel(y=0).Botlev!=0,drop=True).Botlev)).plot.contourf(ax=ax[0],colors="k",add_colorbar=False)
+    # plot quiver with MV
+    quiv=temp.plot.quiver(ax=ax[0],x="x",y="y",u="MVksi",v="MVeta",scale=scale,add_guide=False)
+    ax[0].quiverkey(quiv,0.95,1.02,vel_clip_max,f"{vel_clip_max:.2f} m/s")
+    # plot depth contour
+    if dep_levels is not None:
+        x_dep_levels=[ds.isel(y=-1).where(lambda x:x["Botlev"]<=i,drop=True).isel(x=0).x.item() for i in dep_levels]
+        depcont=(ds['Botlev']).plot.contour(levels=dep_levels,colors='grey',linewidth=3,linestyles="-",ax=ax[0])
+        ax[0].clabel(depcont,fmt='-%.2f m',manual=[(i,ymin+(ymax-ymin)*0.9) for i in x_dep_levels],fontsize=14)
+    # set axis properties
+    [(i.set_xlabel('X [m]'),i.set_ylabel('Y [m]')) for i in ax]
+    [(i.set_xlim([xmin,xmax]),i.set_ylim([ymin,ymax])) for i in ax]
+    ax[0].axis('equal')
+    fig.tight_layout()
     plt.close()
     return fig
 
@@ -168,7 +232,7 @@ def Hs_Theta_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scal
                 y=slice(ymin,ymax,math.ceil(dy/((ds.y.isel(y=1)-ds.y.isel(y=0)).values.item()))))
     hs_levels = hs_levels or np.arange(0,ds["Hsig"].max().item()+ds["Hsig"].max().item()/100,ds["Hsig"].max().item()/100)
     hs_ticks = hs_ticks or np.around(np.arange(0,hs_levels.max()+hs_levels.max()/5,hs_levels.max()/5),decimals=3)
-    fig,ax=plt.subplots(figsize=(9.2,5.2))
+    fig,ax=plt.subplots(figsize=(9.2,9.2*(ymax-ymin)/(xmax-xmin)))
     ax=[ax]
     ax[0].axis('equal')
     # plot hs
@@ -188,9 +252,9 @@ def Hs_Theta_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scal
         depcont=(ds['Botlev']).plot.contour(levels=dep_levels,colors='grey',linewidth=3,linestyles="-",ax=ax[0])
         ax[0].clabel(depcont,fmt='-%.2f m',manual=[(i,ymin+(ymax-ymin)*0.9) for i in x_dep_levels],fontsize=14)
     # set axis properties
-    ax[0].set_title("Hs_Theta")
     [(i.set_xlabel('X [m]'),i.set_ylabel('Y [m]')) for i in ax]
     [(i.set_xlim([xmin,xmax]),i.set_ylim([ymin,ymax])) for i in ax]
+    fig.tight_layout()
     plt.close()
     return fig
 
@@ -429,7 +493,7 @@ def ibp_nan(ds,exc_value=10):
     plt.close()
     return fig
 
-def runup_fig(R2,Ibp,R2_S06,max_z,exc_value=10,ymin=None,ymax=None,dy=None):
+def runup_fig(R2,Ibp,R2_S06,max_z,exc_value=10,ymin=None,ymax=None,dy=None,Lr=None):
     """Plot along-section of runup properties.
 
     Args:
@@ -440,7 +504,8 @@ def runup_fig(R2,Ibp,R2_S06,max_z,exc_value=10,ymin=None,ymax=None,dy=None):
         exc_value (float, optional): Exception value for runup (abs values greater than exc_value are excluded; in m). Default to 10.
         ymin (float, optional): minimum y-position (m). If None, ds.y.min().
         ymax (float, optional): maximum y-position (m). If None, ds.y.max().
-        dy (float, optional): y-grid size (m). If None, dy is calculated from ds.        
+        dy (float, optional): y-grid size (m). If None, dy is calculated from ds.
+        Lr (float, optional): reef lenght (m). If provided, draw vertical lines at reef position.
 
     Return:
         figure with along-section of runup properties.
@@ -463,10 +528,41 @@ def runup_fig(R2,Ibp,R2_S06,max_z,exc_value=10,ymin=None,ymax=None,dy=None):
     Ibp.min(dim="t").plot(c="g",ls="--",label="Min BWL")
     Ibp.mean(dim="t").plot(c="r",label="Setup")
     ax.axhline(y=max_z,c="b",label="Max z")
+    if Lr:
+        [ax.axvline(x=i*Lr/2,c="k",ls="--") for i in [1,-1]]
     [(i.grid(),i.set_ylabel("z [m]"),i.legend(ncol=7),i.set_title(""),i.set_xlim([ymin,ymax])) for i in [ax]]
     plt.close()
     return fig
 
+def cprof_fig(ds1,ds2,ds3,y=[0,0,-10],c=["r","b","k"],height=200):
+    """Return figure with cross-shore view of Hs, Setup, U, and depth profiles for 3 runs (ds1-3).
+
+    Args:
+        ds1 (xr Dataset): xr Dataset 1 with 'Hsig', 'Setup', 'MVksi' and 'Botlev'.
+        ds2 (xr Dataset): xr Dataset 2 with 'Hsig', 'Setup', 'MVksi' and 'Botlev'.
+        ds3 (xr Dataset): xr Dataset 3 with 'Hsig', 'Setup', 'MVksi' and 'Botlev'.
+        y (list, optional): list with y-values where to plot cross-section for ds1, ds2, and ds3. Defaults to [0,0,-10].
+        c (list, optional): list with color strings of ds1, ds2, and ds3, respectively. Defaults to ["r","b","k"].
+        height (int, optional): _description_. Defaults to 200.
+
+    Returns:
+        _type_: _description_
+    """
+    import holoviews as hv
+    return hv.Layout(ds1.sel(y=y[0]).where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True).Hsig.hvplot(c=c[0]).opts(gridstyle={'grid_line_color': 'grey'}, show_grid=True,height=height,title='',xlabel='',xticks='',ylabel="Hs [m]")
+    *\
+    ds2.sel(y=y[1]).where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True).Hsig.hvplot(c=c[1]) *\
+    ds3.sel(y=y[2]).where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True).Hsig.hvplot(c=c[2]) +\
+    ds1.sel(y=y[0]).where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True).Setup.hvplot(c=c[0]).opts(gridstyle={'grid_line_color': 'grey'}, show_grid=True,height=height,title='',xlabel='',ylabel="$\eta$ [m]") *\
+    ds2.sel(y=y[1]).where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True).Setup.hvplot(c=c[1]) *\
+    ds3.sel(y=y[2]).where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True).Setup.hvplot(c=c[2])+\
+    ds1.sel(y=y[0]).where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True).MVksi.hvplot(c=c[0]).opts(gridstyle={'grid_line_color': 'grey'}, show_grid=True,height=height,title='',xlabel='',ylabel="U [m/s]") *\
+    ds2.sel(y=y[1]).where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True).MVksi.hvplot(c=c[1]) *\
+    ds3.sel(y=y[2]).where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True).MVksi.hvplot(c=c[2])+\
+    (-ds1.sel(y=y[0]).where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True).Botlev).hvplot(c=c[0]).opts(gridstyle={'grid_line_color': 'grey'}, show_grid=True,height=height,title='',ylabel="d [m]") *\
+    (-ds2.sel(y=y[1]).where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True).Botlev).hvplot(c=c[1]) *\
+    (-ds3.sel(y=y[2]).where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True).Botlev).hvplot(c=c[2])).cols(1)
+    
 if __name__ == '__main__':
     pass
 
