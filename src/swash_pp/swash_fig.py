@@ -563,6 +563,70 @@ def cprof_fig(ds1,ds2,ds3,y=[0,0,-10],c=["r","b","k"],height=200):
     (-ds2.sel(y=y[1]).where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True).Botlev).hvplot(c=c[1]) *\
     (-ds3.sel(y=y[2]).where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True).Botlev).hvplot(c=c[2])).cols(1)
     
+def Mamfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,vel_clip_max=0.9,vel_clip_min=0.1,plot_dep_dev=False,dep_levels=None,mamfvy_levels=None,mamfvy_ticks=None,cmap="RdBu_r"):
+    """
+    Create 2D fig with moving average of mass flux velocities and y-component as colours.
+    Args:
+        ds (xr data structure): Single data structure with 'x', 'Botlev', 'Mamfvx' and Mamfvy'.
+        xmin (float, optional): minimum x-position (m). If None, ds.x.min().
+        xmax (float, optional): maximum x-position (m). If None, ds.x.max().
+        ymin (float, optional): minimum y-position (m). If None, ds.y.min().
+        ymax (float, optional): maximum y-position (m). If None, ds.y.max().
+        scale (float, optional): quiver scale (larger values result in smaller arrows). Default to 1.
+        vel_clip_max (float, optional): maximum x- and y-velocity clip (in % of x quantile). Default to 0.9.
+        vel_clip_min (float, optional): minimum absolute velocity (in % of x quantile) to be plotted (otherwise nan). Default to 0.1
+        plot_dep_dev (bool), optional: Condition plotting deviations from depth at the first cross-shore section. Default to False.        
+        dep_levels(np array, optional): array with depth contour levels (in m) to be plotted. If None, no depth contours.
+        mamfvy_levels(np array, optional): array with V-currents contour levels (in m) to be plotted.
+        mamfvy_ticks(np array, optional): array with V-currents contour levels ticks (in m) to be plotted.
+        cmap (str): matplotlib colour map. Default to "RdBu_r".
+    """
+    warnings.filterwarnings('ignore')
+    # Assign xmin, xmax, dx, ymin, ymax, and dy if not defined
+    xmin = xmin or ds.x.min().item()
+    xmax = xmax or ds.x.max().item()
+    dx = dx or (ds.x.isel(x=1)-ds.x.isel(x=0)).item()
+    ymin = ymin or ds.y.min().item()
+    ymax = ymax or ds.y.max().item()    
+    dy = dy or (ds.y.isel(y=1)-ds.y.isel(y=0)).item()    
+    temp=ds.sel(x=slice(xmin,xmax,math.ceil(dx/((ds.x.isel(x=1)-ds.x.isel(x=0)).values.item()))),
+                y=slice(ymin,ymax,math.ceil(dy/((ds.y.isel(y=1)-ds.y.isel(y=0)).values.item()))))
+    mamfvy_max=xr.apply_ufunc(np.abs,ds["Mamfvy"]).max().item()
+    if mamfvy_levels is None: mamfvy_levels = np.arange(-mamfvy_max,mamfvy_max+mamfvy_max/50,mamfvy_max/50)
+    if mamfvy_ticks is None: mamfvy_ticks = np.around(np.arange(-mamfvy_max,mamfvy_max+mamfvy_max/3,mamfvy_max/3),decimals=3)
+    # velocity clipping
+    vel_clip_max=xr.apply_ufunc(np.abs,temp["Mamfvx"]).quantile(vel_clip_max).item()
+    temp["Mamfvx"]=temp["Mamfvx"].clip(min=-vel_clip_max,max=vel_clip_max)
+    temp["Mamfvy"]=temp["Mamfvy"].clip(min=-vel_clip_max,max=vel_clip_max)
+    vel_clip_min=xr.apply_ufunc(np.abs,temp["Mamfvx"]).quantile(vel_clip_min).item()
+    temp=temp.where(lambda x:(x["Mamfvx"]**2+x["Mamfvy"]**2)**0.5>=vel_clip_min,drop=True)
+    # figure
+    fig,ax=plt.subplots(figsize=(9.2,9.2*(ymax-ymin)/(xmax-xmin)))
+    ax=[ax]
+    # plot Mamfv
+    mamfvy=ds["Mamfvy"].plot(ax=ax[0],cmap=cmap,levels=mamfvy_levels,add_colorbar=False,clip_on=True)
+    fig.colorbar(mamfvy,ticks=mamfvy_ticks,label=r'$\mathrm{ V [m \cdot s^{-1}]}$ ',orientation='horizontal',cax=ax[0].inset_axes([0.05,1.05,0.85,0.05],transform=ax[0].transAxes),ticklocation='top')
+    # plot land surface
+    ax[0].fill_betweenx(ds.y,ds.isel(y=0).where(lambda x:x.Botlev<=0,drop=True).isel(x=0).x.item(),xmax,color="peachpuff",clip_on=True)
+    # plot reef contour
+    if plot_dep_dev:
+        (-(ds.where(ds.Botlev-ds.isel(y=0).Botlev!=0,drop=True).Botlev)).plot.contourf(ax=ax[0],colors="k",add_colorbar=False)
+    # plot quiver with Mamfv
+    quiv=temp.plot.quiver(ax=ax[0],x="x",y="y",u="Mamfvx",v="Mamfvy",scale=scale,add_guide=False)
+    ax[0].quiverkey(quiv,0.95,1.02,vel_clip_max,f"{vel_clip_max:.2f} m/s")
+    # plot depth contour
+    if dep_levels is not None:
+        x_dep_levels=[ds.isel(y=-1).where(lambda x:x["Botlev"]<=i,drop=True).isel(x=0).x.item() for i in dep_levels]
+        depcont=(ds['Botlev']).plot.contour(levels=dep_levels,colors='grey',linewidth=3,linestyles="-",ax=ax[0])
+        ax[0].clabel(depcont,fmt='-%.2f m',manual=[(i,ymin+(ymax-ymin)*0.9) for i in x_dep_levels],fontsize=14)
+    # set axis properties
+    [(i.set_xlabel('X [m]'),i.set_ylabel('Y [m]')) for i in ax]
+    [(i.set_xlim([xmin,xmax]),i.set_ylim([ymin,ymax])) for i in ax]
+    ax[0].axis('equal')
+    fig.tight_layout()
+    plt.close()
+    return fig
+
 if __name__ == '__main__':
     pass
 
