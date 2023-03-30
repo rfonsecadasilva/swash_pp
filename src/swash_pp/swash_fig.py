@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import xarray as xr
 import numpy as np
 import swash_pp.lwt as lwt
+import string
 
 def Hs_Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=None,vel_clip_max=0.9,vel_clip_min=0.1,plot_dep_dev=False,dep_levels=None,hs_levels=None,hs_ticks=None,Hs0=None,cmap="jet"):
     """
@@ -624,6 +625,36 @@ def Mamfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1
     [(i.set_xlim([xmin,xmax]),i.set_ylim([ymin,ymax])) for i in ax]
     ax[0].axis('equal')
     fig.tight_layout()
+    plt.close()
+    return fig
+
+def crossp_fig(ds,y_reef,y_exposed,xmin=None,xmax=None):
+    """
+    Create 2D fig with moving average of mass flux velocities and y-component as colours.
+    Args:
+        ds (xr data structure): Single data structure with 'x', 'Botlev', 'Hsig', 'Setup' and 'Mdavx'.
+        y1 (float): position 1 of y where to plot cross-section.
+        y2 (float): position 1 of y where to plot cross-section.
+        xmin (float, optional): minimum x-position (m). If None, ds.x.min().
+        xmax (float, optional): maximum x-position (m). If None, ds.x.max().
+    """
+    warnings.filterwarnings('ignore')
+    # Assign xmin, xmax, dx, ymin, ymax, and dy if not defined
+    xmin = xmin or ds.x.min().item()
+    xmax = xmax or ds.x.max().item()
+    temp=ds.sel(x=slice(xmin,xmax))
+    # figure
+    fig,ax=plt.subplots(figsize=(10,12),nrows=4,sharex=True)
+    [temp.sel(y=[y_reef,y_exposed][j],method="nearest").where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True)["Hsig"].interpolate_na('x').plot(ax=ax[0],c=["r","k"][j],label=["Reef","Exposed"][j]) for j in range(2)]
+    [temp.sel(y=[y_reef,y_exposed][j],method="nearest").where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True)["Setup"].interpolate_na('x').plot(ax=ax[1],c=["r","k"][j],label=["Reef","Exposed"][j]) for j in range(2)]
+    [temp.sel(y=[y_reef,y_exposed][j],method="nearest").where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True)["Mdavx"].interpolate_na('x').plot(ax=ax[2],c=["r","k"][j],label=["Reef","Exposed"][j]) for j in range(2)]    
+    [(-temp.sel(y=[y_reef,y_exposed][j],method="nearest").where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True)["Botlev"]).plot(ax=ax[3],c=["r","k"][j],label=["Reef","Exposed"][j]) for j in range(2)]        
+    [ax[i].set_ylabel(["$\mathrm{H_S\,\,[m]}$","$\mathrm{\eta\,\,[m]}$","$\mathrm{\\langle U_{dep}\\rangle\,\,[m \cdot s^{-1}]}$","$\mathrm{d\,\,[m]}$"][i]) for i in range(len(ax))]
+    [i.set_xlabel("") for i in ax[:-1]]
+    ax[-1].set_xlabel("x [m]")
+    [(i.grid(),i.set_title(""),i.set_xlim([xmin,xmax])) for i in ax]
+    ax[0].legend(ncol=3,bbox_to_anchor=(0.5,1.06),loc="lower center")
+    [j.text(0,1.02,string.ascii_lowercase[i],fontweight="bold",transform=j.transAxes) for i,j in enumerate(ax.flatten())]
     plt.close()
     return fig
 
