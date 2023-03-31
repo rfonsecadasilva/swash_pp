@@ -411,14 +411,14 @@ def xvel_3D(ds,mkmax=0.1,xmin=None,xmax=None,dx=None,y=0,scale=2,line_vel=False,
     xmax = xmax or ds.x.max().item()
     dx = dx or (ds.x.isel(x=1)-ds.x.isel(x=0)).item()
     temp=ds.sel(x=slice(xmin,xmax,math.ceil(dx/((ds.x.isel(x=1)-ds.x.isel(x=0)).values.item()))))
-    temp=unify_mkv(temp,mkmax=mkmax) # create condenses velocity profiles (interpolating Mkev and Mkcv; edges and centers)
+    temp=unify_mkv(temp,mkmax=mkmax) # create condensed velocity profiles (interpolating Mkev and Mkcv; edges and centers)
     temp["Mkvz"]=temp["Mkvx"]*0 # create null z component
     # figure
     fig,ax=plt.subplots(figsize=(20,7))
     xarray=np.arange(xmin,xmax,dx) # create area of plot
     for x in xarray:
         inst=temp.sel(x=x,method="nearest").sel(y=y,method="nearest") #select data for given x and y
-        if line_vel: ax.plot(inst.x+5*scale*inst.Mkvx,inst.z,c="k",marker="o") #draw 3D vel profile; I don't get why I need 5*scale
+        if line_vel: ax.plot(inst.x+4*scale*inst.Mkvx,inst.z,c="k",marker="o") #draw 3D vel profile; I don't get why I need 5*scale
         quiv=inst.plot.quiver(x="x",y="z",u="Mkvx",v="Mkvz",ax=ax,pivot="tail",scale=scale,add_guide=False,width=0.002,headwidth=5)
         ax.quiverkey(quiv,0.95,1.02,0.1,f"{0.1:.2f} m/s")
         ax.plot([inst.x]*2,[(-inst.Botlev),mkmax],c="k",ls="--") #draw ref line
@@ -632,7 +632,7 @@ def crossp_fig(ds,y_reef,y_exposed,xmin=None,xmax=None):
     """
     Create 2D fig with moving average of mass flux velocities and y-component as colours.
     Args:
-        ds (xr data structure): Single data structure with 'x', 'Botlev', 'Hsig', 'Setup' and 'Mdavx'.
+        ds (xr data structure): Single data structure with 'x', 'Botlev', 'Hsig', 'Setup', 'Mdavx', and 'Mdavy'.
         y1 (float): position 1 of y where to plot cross-section.
         y2 (float): position 1 of y where to plot cross-section.
         xmin (float, optional): minimum x-position (m). If None, ds.x.min().
@@ -644,12 +644,13 @@ def crossp_fig(ds,y_reef,y_exposed,xmin=None,xmax=None):
     xmax = xmax or ds.x.max().item()
     temp=ds.sel(x=slice(xmin,xmax))
     # figure
-    fig,ax=plt.subplots(figsize=(10,12),nrows=4,sharex=True)
+    fig,ax=plt.subplots(figsize=(10,15),nrows=5,sharex=True)
     [temp.sel(y=[y_reef,y_exposed][j],method="nearest").where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True)["Hsig"].interpolate_na('x').plot(ax=ax[0],c=["r","k"][j],label=["Reef","Exposed"][j]) for j in range(2)]
     [temp.sel(y=[y_reef,y_exposed][j],method="nearest").where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True)["Setup"].interpolate_na('x').plot(ax=ax[1],c=["r","k"][j],label=["Reef","Exposed"][j]) for j in range(2)]
     [temp.sel(y=[y_reef,y_exposed][j],method="nearest").where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True)["Mdavx"].interpolate_na('x').plot(ax=ax[2],c=["r","k"][j],label=["Reef","Exposed"][j]) for j in range(2)]    
-    [(-temp.sel(y=[y_reef,y_exposed][j],method="nearest").where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True)["Botlev"]).plot(ax=ax[3],c=["r","k"][j],label=["Reef","Exposed"][j]) for j in range(2)]        
-    [ax[i].set_ylabel(["$\mathrm{H_S\,\,[m]}$","$\mathrm{\eta\,\,[m]}$","$\mathrm{\\langle U_{dep}\\rangle\,\,[m \cdot s^{-1}]}$","$\mathrm{d\,\,[m]}$"][i]) for i in range(len(ax))]
+    [temp.sel(y=[y_reef,y_exposed][j],method="nearest").where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True)["Mdavy"].interpolate_na('x').plot(ax=ax[3],c=["r","k"][j],label=["Reef","Exposed"][j]) for j in range(2)]    
+    [(-temp.sel(y=[y_reef,y_exposed][j],method="nearest").where(lambda ds:ds["Setup"]>=-ds["Botlev"],drop=True)["Botlev"]).plot(ax=ax[-1],c=["r","k"][j],label=["Reef","Exposed"][j]) for j in range(2)]        
+    [ax[i].set_ylabel(["$\mathrm{H_S\,\,[m]}$","$\mathrm{\eta\,\,[m]}$","$\mathrm{\\langle U_{dep}\\rangle\,\,[m \cdot s^{-1}]}$","$\mathrm{\\langle V_{dep}\\rangle\,\,[m \cdot s^{-1}]}$","$\mathrm{d\,\,[m]}$"][i]) for i in range(len(ax))]
     [i.set_xlabel("") for i in ax[:-1]]
     ax[-1].set_xlabel("x [m]")
     [(i.grid(),i.set_title(""),i.set_xlim([xmin,xmax])) for i in ax]
