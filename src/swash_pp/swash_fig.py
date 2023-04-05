@@ -373,7 +373,7 @@ def unify_mkv(ds,mkmax=0.1):
     """Return dataset with merged 3D velocity profiles (Mkevx and Mkcvx --> Mkvx; Mkevy and Mkevy --> Mkvy).
     
     Args:
-        ds (xr dataset): dataset with "Mkcvx", "Mkcvy", "Mkevx", "Mkevy", "Mdavx","Mdavy", "Mfvx", "Mfvy" (in m/s), and "Botlev" (in m).
+        ds (xr dataset): dataset with "Mkcvx", "Mkcvy", "Mkevx", "Mkevy" (in m/s).
         mkmax (float): top coordinate of water (in m) (command MKmax, see swash*_further).
         
     Returns:
@@ -383,18 +383,18 @@ def unify_mkv(ds,mkmax=0.1):
     temp_zc=temp_zc.assign_coords({"kc":-(temp_zc["kc"]-0.5)/temp_zc["kc"].max()}).rename({"kc":"k","Mkcvx":"Mkvx","Mkcvy":"Mkvy"}) #transform kc into k; k is % of water depth, 0 for surface and -1 for bottom
     temp_ze=ds[["Mkevx","Mkevy"]]
     temp_ze=temp_ze.assign_coords({"ke":-(temp_ze["ke"])/temp_ze["ke"].max()}).rename({"ke":"k","Mkevx":"Mkvx","Mkevy":"Mkvy"}) #transform ke into k
-    temp=xr.merge([temp_ze,temp_zc,ds[["Botlev","Mfvx","Mfvy","Mdavx","Mdavy"]]])
+    temp=xr.merge([temp_ze,temp_zc,ds[[i for i in ds.data_vars if i not in ["Mkcvx","Mkcvy","Mkevx","Mkevy"]]]])
     temp=temp.assign_coords({"z":mkmax+(temp.Botlev+mkmax)*temp.k}) #write z coordinate
     # rename attributes
     temp["Mkvx"].attrs["standard_name"],temp["Mkvy"].attrs["standard_name"]="Mkvx","Mkvy"
     temp["Mkvx"].attrs["long_name"],temp["Mkvy"].attrs["long_name"]="Mean layer-dependent u","Mean layer-dependent v"
     return temp
 
-def xvel_3D(ds,mkmax=0.1,xmin=None,xmax=None,dx=None,y=0,scale=2,line_vel=False,mfvx=False,mdavx=False):
+def xvel_3D(ds,mkmax=0.1,xmin=None,xmax=None,dx=None,y=0,scale=2,line_vel=False,mfvx=False,mdavx=False,setup=False):
     """
     Plot cross-shore view with 2DV u-velocities.
     Args:
-        ds (xr data structure): data structure with "Mkvx", "Mkvy", "Mdavx","Mdavy", "Mfvx", "Mfvy" (in m/s), and "Botlev" (in m).
+        ds (xr data structure): data structure with "Mkvx", "Mkvy" (in m/s), "Botlev" (in m), and optional parameters ( "Mdavx","Mdavy", "Mfvx", "Mfvy" (in m/s), and 'Setup' (m)).
         xmin (float, optional): minimum x-position (m). If None, ds.x.min().
         xmax (float, optional): maximum x-position (m). If None, ds.x.max().
         dx (float, optional): x-grid size (m). If None, dx is calculated from ds.
@@ -403,9 +403,10 @@ def xvel_3D(ds,mkmax=0.1,xmin=None,xmax=None,dx=None,y=0,scale=2,line_vel=False,
         line_vel (bool, optional): if True, plot vertical lines with 2DV velocities (on top of arrows). Default to False.
         mfvx (bool, optional): if True, plot vertical dashed lines with mass-flux velocities. Default to False.
         mdavx (bool, optional): if True, plot vertical dashed lines with mean depth-averaged velocities. Default to False.
+        setup (bool, optional): if True, plot horizontal dashed lines with setup. Default to False.
 
-        Returns:
-            fig: matplotlib figure with cross-shore view with 2DV u-velocities.
+    Returns:
+        fig: matplotlib figure with cross-shore view with 2DV u-velocities.
         """
     xmin = xmin or ds.x.min().item()
     xmax = xmax or ds.x.max().item()
@@ -425,13 +426,15 @@ def xvel_3D(ds,mkmax=0.1,xmin=None,xmax=None,dx=None,y=0,scale=2,line_vel=False,
         if mfvx: ax.plot([inst.x+inst.Mfvx*5*scale]*2,[(-inst.Botlev),mkmax],c="r",ls="--") #draw Mfvx
         if mdavx: ax.plot([inst.x+inst.Mdavx*5*scale]*2,[(-inst.Botlev),mkmax],c="b",ls="--") #draw Mdavx
     (-ds.Botlev).sel(x=slice(xmin,xmax)).sel(y=y,method="nearest").plot(c="k",label="Bottom") # plot depth profile
+    if setup: ds.sel(x=slice(xmin,xmax)).sel(y=y,method="nearest").where(lambda ds:ds["Setup"]>-ds["Botlev"]).Setup.plot(c="r",label="Setup") # plot setup profile
+    ax.legend()
     ax.axhline(0,c="grey",ls="-")
     ax.grid()
     ax.text(0.5,1.1,"2DV velocity profile",transform=ax.transAxes,fontsize=14,ha="center")
     plt.close()
     return fig
 
-def yvel_3D(ds,mkmax=0.1,ymin=None,ymax=None,dy=None,x=0,scale=2,line_vel=False,mfvy=False,mdavy=False):
+def yvel_3D(ds,mkmax=0.1,ymin=None,ymax=None,dy=None,x=0,scale=2,line_vel=False,mfvy=False,mdavy=False,setup=False):
     """
     Plot alongshore view with 2DV v-velocities.
     Args:
@@ -444,9 +447,10 @@ def yvel_3D(ds,mkmax=0.1,ymin=None,ymax=None,dy=None,x=0,scale=2,line_vel=False,
         line_vel (bool, optional): if True, plot vertical lines with 2DV velocities (on top of arrows). Default to False.
         mfvy (bool, optional): if True, plot vertical dashed lines with mass-flux velocities. Default to False.
         mdavy (bool, optional): if True, plot vertical dashed lines with mean depth-averaged velocities. Default to False.
+        setup (bool, optional): if True, plot horizontal dashed lines with setup. Default to False.        
 
-        Returns:
-            fig: matplotlib figure with cross-shore view with 2DV u-velocities.
+    Returns:
+        fig: matplotlib figure with cross-shore view with 2DV u-velocities.
         """
     ymin = ymin or ds.y.min().item()
     ymax = ymax or ds.y.max().item()
@@ -466,6 +470,7 @@ def yvel_3D(ds,mkmax=0.1,ymin=None,ymax=None,dy=None,x=0,scale=2,line_vel=False,
         if mfvy: ax.plot([inst.y+inst.Mfvy*5*scale]*2,[(-inst.Botlev),mkmax],c="r",ls="--") #draw Mfvy
         if mdavy: ax.plot([inst.y+inst.Mdavy*5*scale]*2,[(-inst.Botlev),mkmax],c="b",ls="--") #draw Mdavx
     (-ds.Botlev).sel(y=slice(ymin,ymax)).sel(x=x,method="nearest").plot(c="k",label="Bottom") # plot depth profile
+    if setup: ds.sel(y=slice(ymin,ymax)).sel(x=x,method="nearest").where(lambda ds:ds["Setup"]>-ds["Botlev"]).Setup.plot(c="r",label="Setup") # plot setup  profile
     ax.axhline(0,c="grey",ls="-")
     ax.axvline(0,c="grey",ls="-")
     ax.grid()
