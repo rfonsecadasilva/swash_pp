@@ -450,7 +450,7 @@ def create_mamfv_gif(gif_name,ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None
                 ax[0].text(0.5,1.02,'t = {:.2f} min'.format(temp.isel(t=t).t.item()/60),transform=ax[0].transAxes,ha='center',va='bottom') # print time
         [(i.set_xlim([xmin,xmax]),i.set_ylim([ymin,ymax])) for i in ax]
         plt.savefig(f'{gif_path}{gif_name}/{gif_name}_Fig_{t:04d}.png',dpi=dpi)
-        plt.close() 
+        plt.close()
 
     
     print(f"Creating figures - total of {len(temp.t)} time steps")
