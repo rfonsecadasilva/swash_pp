@@ -379,6 +379,8 @@ def unify_mkv(ds,mkmax=0.1):
     Returns:
         ds (xr dataset): dataset with "Mkvx", "Mkvy", and "z" variables added.
     """
+    if "Mkcvy" not in ds: ds["Mkcvy"]=ds["Mkcvx"]*0
+    if "Mkevy" not in ds: ds["Mkevy"]=ds["Mkcvx"]*0
     temp_zc=ds[["Mkcvx","Mkcvy"]]
     temp_zc=temp_zc.assign_coords({"kc":-(temp_zc["kc"]-0.5)/temp_zc["kc"].max()}).rename({"kc":"k","Mkcvx":"Mkvx","Mkcvy":"Mkvy"}) #transform kc into k; k is % of water depth, 0 for surface and -1 for bottom
     temp_ze=ds[["Mkevx","Mkevy"]]
@@ -390,7 +392,13 @@ def unify_mkv(ds,mkmax=0.1):
     temp["Mkvx"].attrs["long_name"],temp["Mkvy"].attrs["long_name"]="Mean layer-dependent u","Mean layer-dependent v"
     return temp
 
-def xvel_3D(ds,mkmax=0.1,xmin=None,xmax=None,dx=None,y=0,scale=2,line_vel=False,mfvx=False,mdavx=False,setup=False):
+def trunc(x,decimals=3):
+    """Truncate x to decimals."""
+    x[x>0]=np.floor(x[x>0]*10**decimals)/10**decimals
+    x[x<0]=np.ceil(x[x<0]*10**decimals)/10**decimals
+    return x
+
+def xvel_3D(ds,mkmax=0.1,xmin=None,xmax=None,dx=None,y=0,scale=2,quiver=True,line_vel=False,mfvx=False,mdavx=False,setup=False,contour=False,mkvx_levels=None,mkvx_ticks=None,cmap="RdBu_r"):
     """
     Plot cross-shore view with 2DV u-velocities.
     Args:
@@ -400,10 +408,15 @@ def xvel_3D(ds,mkmax=0.1,xmin=None,xmax=None,dx=None,y=0,scale=2,line_vel=False,
         dx (float, optional): x-grid size (m). If None, dx is calculated from ds.
         y (float, optional): y-position (in m). Default to 0.
         scale (float, optional): quiver scale (larger values result in smaller arrows). Default to 1.
-        line_vel (bool, optional): if True, plot vertical lines with 2DV velocities (on top of arrows). Default to False.
+        quiver (bool, optional): if True, plot arrows with 2DV velocities. Default to True.
+        line_vel (bool, optional): if True, plot vertical lines with 2DV velocities. Default to False.
         mfvx (bool, optional): if True, plot vertical dashed lines with mass-flux velocities. Default to False.
         mdavx (bool, optional): if True, plot vertical dashed lines with mean depth-averaged velocities. Default to False.
         setup (bool, optional): if True, plot horizontal dashed lines with setup. Default to False.
+        contour (bool, optional): if True, plot colour map with "Mkvx". Default to False.
+        mkvx_levels(np array, optional): array with "Mkvx" contour levels (in m) to be plotted.
+        mkvx_ticks(np array, optional): array with "Mkvx" contour levels ticks (in m) to be plotted.
+        cmap (str): matplotlib colour map. Default to "RdBu_r".
 
     Returns:
         fig: matplotlib figure with cross-shore view with 2DV u-velocities.
@@ -412,29 +425,36 @@ def xvel_3D(ds,mkmax=0.1,xmin=None,xmax=None,dx=None,y=0,scale=2,line_vel=False,
     xmax = xmax or ds.x.max().item()
     dx = dx or (ds.x.isel(x=1)-ds.x.isel(x=0)).item()
     temp=ds.sel(x=slice(xmin,xmax,math.ceil(dx/((ds.x.isel(x=1)-ds.x.isel(x=0)).values.item()))))
+    temp=temp.sel(y=y,method="nearest") # select y-position
     temp=unify_mkv(temp,mkmax=mkmax) # create condensed velocity profiles (interpolating Mkev and Mkcv; edges and centers)
     temp["Mkvz"]=temp["Mkvx"]*0 # create null z component
     # figure
     fig,ax=plt.subplots(figsize=(20,7))
+    if contour:
+        mkvx_max=xr.apply_ufunc(np.abs,temp["Mkvx"]).max().item()
+        mkvx_levels = mkvx_levels or np.arange(-mkvx_max,mkvx_max+mkvx_max/50,mkvx_max/50)
+        mkvx_ticks = mkvx_ticks or trunc(np.arange(-mkvx_max,mkvx_max+mkvx_max/2,mkvx_max),decimals=3)
+        mkvx=temp.Mkvx.plot(x='x',y='z',cmap=cmap,levels=mkvx_levels,add_colorbar=False)
+        fig.colorbar(mkvx,ticks=mkvx_ticks,label=r'$\mathrm{ u\, [m \cdot s^{-1}]}$ ',orientation='horizontal',cax=ax.inset_axes([0.45,0.05,0.35,0.03],transform=ax.transAxes),ticklocation='top') # depth profile from left to right 
     xarray=np.arange(xmin,xmax,dx) # create area of plot
     for x in xarray:
-        inst=temp.sel(x=x,method="nearest").sel(y=y,method="nearest") #select data for given x and y
+        inst=temp.sel(x=x,method="nearest") #select data for given x
         if line_vel: ax.plot(inst.x+4*scale*inst.Mkvx,inst.z,c="k",marker="o") #draw 3D vel profile; I don't get why I need 5*scale
-        quiv=inst.plot.quiver(x="x",y="z",u="Mkvx",v="Mkvz",ax=ax,pivot="tail",scale=scale,add_guide=False,width=0.002,headwidth=5)
-        ax.quiverkey(quiv,0.95,1.02,0.1,f"{0.1:.2f} m/s")
+        if quiver:
+            quiv=inst.plot.quiver(x="x",y="z",u="Mkvx",v="Mkvz",ax=ax,pivot="tail",scale=scale,add_guide=False,width=0.002,headwidth=5)
+            ax.quiverkey(quiv,0.95,1.02,0.1,f"{0.1:.2f} m/s")
         ax.plot([inst.x]*2,[(-inst.Botlev),mkmax],c="k",ls="--") #draw ref line
         if mfvx: ax.plot([inst.x+inst.Mfvx*5*scale]*2,[(-inst.Botlev),mkmax],c="r",ls="--") #draw Mfvx
         if mdavx: ax.plot([inst.x+inst.Mdavx*5*scale]*2,[(-inst.Botlev),mkmax],c="b",ls="--") #draw Mdavx
     (-ds.Botlev).sel(x=slice(xmin,xmax)).sel(y=y,method="nearest").plot(c="k",label="Bottom") # plot depth profile
     if setup: ds.sel(x=slice(xmin,xmax)).sel(y=y,method="nearest").where(lambda ds:ds["Setup"]>-ds["Botlev"]).Setup.plot(c="r",label="Setup") # plot setup profile
-    ax.legend()
-    ax.axhline(0,c="grey",ls="-")
-    ax.grid()
+    [(i.set_xlabel("x [m]"),i.set_ylabel("z [m]")) for i in [ax]] #i.set_xlim([xmin,xmax])
+    [(i.grid(),i.axhline(0,c="grey",ls="-"),i.legend()) for i in [ax]]
     ax.text(0.5,1.1,"2DV velocity profile",transform=ax.transAxes,fontsize=14,ha="center")
     plt.close()
     return fig
 
-def yvel_3D(ds,mkmax=0.1,ymin=None,ymax=None,dy=None,x=0,scale=2,line_vel=False,mfvy=False,mdavy=False,setup=False):
+def yvel_3D(ds,mkmax=0.1,ymin=None,ymax=None,dy=None,x=0,scale=2,quiver=True,line_vel=False,mfvy=False,mdavy=False,setup=False,contour=False,mkvy_levels=None,mkvy_ticks=None,cmap="RdBu_r"):
     """
     Plot alongshore view with 2DV v-velocities.
     Args:
@@ -444,10 +464,15 @@ def yvel_3D(ds,mkmax=0.1,ymin=None,ymax=None,dy=None,x=0,scale=2,line_vel=False,
         dy (float, optional): y-grid size (m). If None, dy is calculated from ds.
         x (float, optional): x-position (in m). Default to 0.
         scale (float, optional): quiver scale (larger values result in smaller arrows). Default to 1.
+        quiver (bool, optional): if True, plot arrows with 2DV velocities. Default to True.
         line_vel (bool, optional): if True, plot vertical lines with 2DV velocities (on top of arrows). Default to False.
         mfvy (bool, optional): if True, plot vertical dashed lines with mass-flux velocities. Default to False.
         mdavy (bool, optional): if True, plot vertical dashed lines with mean depth-averaged velocities. Default to False.
-        setup (bool, optional): if True, plot horizontal dashed lines with setup. Default to False.        
+        setup (bool, optional): if True, plot horizontal dashed lines with setup. Default to False.
+        contour (bool, optional): if True, plot colour map with "Mkvy". Default to False.
+        mkvy_levels(np array, optional): array with "Mkvy" contour levels (in m) to be plotted.
+        mkvy_ticks(np array, optional): array with "Mkvy" contour levels ticks (in m) to be plotted.
+        cmap (str): matplotlib colour map. Default to "RdBu_r".
 
     Returns:
         fig: matplotlib figure with cross-shore view with 2DV u-velocities.
@@ -456,16 +481,24 @@ def yvel_3D(ds,mkmax=0.1,ymin=None,ymax=None,dy=None,x=0,scale=2,line_vel=False,
     ymax = ymax or ds.y.max().item()
     dy = dy or (ds.y.isel(y=1)-ds.y.isel(y=0)).item()
     temp=ds.sel(y=slice(ymin,ymax,math.floor(dy/((ds.y.isel(y=1)-ds.y.isel(y=0)).values.item()))))
-    temp=unify_mkv(temp,mkmax=mkmax) # create condenses velocity profiles (interpolating Mkev and Mkcv; edges and centers)
+    temp=temp.sel(x=x,method="nearest") # select x-position
+    temp=unify_mkv(temp,mkmax=mkmax) # condenses velocity profiles (interpolating Mkev and Mkcv; edges and centers)
     temp["Mkvz"]=temp["Mkvx"]*0 # create null z component
     # figure
     fig,ax=plt.subplots(figsize=(20,7))
+    if contour:
+        mkvy_max=xr.apply_ufunc(np.abs,temp["Mkvy"]).max().item()
+        mkvy_levels = mkvy_levels or np.arange(-mkvy_max,mkvy_max+mkvy_max/50,mkvy_max/50)
+        mkvy_ticks = mkvy_ticks or trunc(np.arange(-mkvy_max,mkvy_max+mkvy_max/2,mkvy_max),decimals=3)
+        mkvy=temp.Mkvy.plot(x='y',y='z',cmap=cmap,levels=mkvy_levels,add_colorbar=False)
+        fig.colorbar(mkvy,ticks=mkvy_ticks,label=r'$\mathrm{ v\, [m \cdot s^{-1}]}$ ',orientation='horizontal',cax=ax.inset_axes([0.45,0.05,0.35,0.03],transform=ax.transAxes),ticklocation='top') # depth profile from left to right 
     yarray=np.arange(ymin,ymax,dy) # create area of plot
     for y in yarray:
-        inst=temp.sel(x=x,y=y,method="nearest") #select data for given x and y
+        inst=temp.sel(y=y,method="nearest") #select data for given y
         if line_vel: ax.plot(inst.y+5*scale*inst.Mkvy,inst.z,c="k",marker="o") #draw 3D vel profile; I don't get why I need 5*scale
-        quiv=inst.plot.quiver(x="y",y="z",u="Mkvy",v="Mkvz",ax=ax,pivot="tail",scale=scale,add_guide=False,width=0.002,headwidth=5)
-        ax.quiverkey(quiv,0.95,1.02,0.1,f"{0.1:.2f} m/s")
+        if quiver:
+            quiv=inst.plot.quiver(x="y",y="z",u="Mkvy",v="Mkvz",ax=ax,pivot="tail",scale=scale,add_guide=False,width=0.002,headwidth=5)
+            ax.quiverkey(quiv,0.95,1.02,0.1,f"{0.1:.2f} m/s")
         ax.plot([inst.y]*2,[(-inst.Botlev),mkmax],c="k",ls="--") #draw ref line
         if mfvy: ax.plot([inst.y+inst.Mfvy*5*scale]*2,[(-inst.Botlev),mkmax],c="r",ls="--") #draw Mfvy
         if mdavy: ax.plot([inst.y+inst.Mdavy*5*scale]*2,[(-inst.Botlev),mkmax],c="b",ls="--") #draw Mdavx
