@@ -329,7 +329,7 @@ def tab2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
 
         Args:
             first_index (int): first index of np array.
-            second_index (int): chunk length.
+            chunk (int): chunk length.
             skip (int): skip.
             length (int): length of np array.
 
@@ -366,10 +366,10 @@ def tab2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
                 # initiate dict that will contain the whole dataset
                 out={}
                 for i in range(len(tab_rev)): # iterate over each keyword requested
-                    out[swash_dict[tab_rev[i]][0]]=file[custom_index(sum(ndim[:i]),ndim[i],int(np.dot(ndim,np.ones(len(ndim)))),len(file))]
+                    out[swash_dict[tab_rev[i]][0]]=file[custom_index(sum(ndim[:i]),ndim[i],int(np.dot(ndim,np.ones(len(ndim)))),len(file))] # retrieve values for keyword
                     if ndim[i]==1: # reshape into station and time
                         if tab[0] != "'NOGRID'":
-                            out[swash_dict[tab_rev[i]][0]]=out[swash_dict[tab_rev[i]][0]].reshape((len(point[tab[0]][1]),len(out[swash_dict[tab_rev[i]][0]])//len(point[tab[0]][1])))
+                            out[swash_dict[tab_rev[i]][0]]=np.vstack((out[swash_dict[tab_rev[i]][0]][j::len(point[tab[0]][1])] for j in range(len(point[tab[0]][1]))))  # reorder to groups of stations (rather than default groups of time) and reshape into station and time
                             if swash_dict[tab_rev[i]][0] not in ["Time","Tsec"]: # exclude time as it consists of a coordinate (see below)
                                 ds.append(xr.Dataset(
                                     data_vars={swash_dict[tab_rev[i]][0]: (("stations", "t"), out[swash_dict[tab_rev[i]][0]],
@@ -390,7 +390,8 @@ def tab2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
                                             attrs=attr_dict
                                             ))                            
                     else: # reshape into station, time and k
-                        out[swash_dict[tab_rev[i]][0]]=out[swash_dict[tab_rev[i]][0]].reshape((len(point[tab[0]][1]),len(out[swash_dict[tab_rev[i]][0]])//len(point[tab[0]][1])//ndim[i],ndim[i]))
+                        out[swash_dict[tab_rev[i]][0]]=np.array([[out[swash_dict[tab_rev[i]][0]][j*ndim[i]+k::len(point[tab[0]][1])*ndim[i]] for j in range(len(point[tab[0]][1]))] for k in range(ndim[i])]) # reorder and reshape to k,station,time
+                        out[swash_dict[tab_rev[i]][0]]=np.transpose(out[swash_dict[tab_rev[i]][0]],(1,2,0)) # transpose to station,time,k
                         ds.append(xr.Dataset(
                                     data_vars={swash_dict[tab_rev[i]][0]: (("stations","t",["kc","ke"][swash_dict[tab_rev[i]][3] in out_ind["sta_ke"]+out_ind["ins_ke"]]), out[swash_dict[tab_rev[i]][0]],
                                                                                 {"standard_name": swash_dict[tab_rev[i]][0],
