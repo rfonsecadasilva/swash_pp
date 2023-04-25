@@ -52,7 +52,7 @@ def Hs_Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=
     hs=ds["Hsig"].plot(ax=ax[0],cmap=cmap,levels=hs_levels,add_colorbar=False,clip_on=True)
     fig.colorbar(hs,ticks=hs_ticks,label=[r'$\mathrm{ H_S}$ [m]',r'$\mathrm{ H_S\,/\,H_{S,0}}$'][Hs0 is not None],orientation='horizontal',cax=ax[0].inset_axes([0.05,1.05,0.85,0.05],transform=ax[0].transAxes),ticklocation='top')
     # plot land surface
-    ax[0].fill_betweenx(ds.y,ds.isel(y=0).where(lambda x:x.Botlev<=0,drop=True).isel(x=0).x.item(),xmax,color="peachpuff",clip_on=True)
+    ax[0].fill_betweenx(ds.y,ds.isel(y=0).where(lambda x:x.Botlev<=0,drop=True).isel(x=0).x.item(),ds.isel(y=0).where(lambda x:x.Botlev<=0,drop=True).isel(x=-1).x.item(),color="peachpuff",clip_on=True)
     # plot reef contour
     if plot_dep_dev:
         (-(ds.where(ds.Botlev-ds.isel(y=0).Botlev!=0,drop=True).Botlev)).plot.contourf(ax=ax[0],colors="k",add_colorbar=False)
@@ -115,7 +115,7 @@ def Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,v
     mfvy=ds["Mfvy"].plot(ax=ax[0],cmap=cmap,levels=mfvy_levels,add_colorbar=False,clip_on=True)
     fig.colorbar(mfvy,ticks=mfvy_ticks,label=r'$\mathrm{ V [m \cdot s^{-1}]}$ ',orientation='horizontal',cax=ax[0].inset_axes([0.05,1.05,0.85,0.05],transform=ax[0].transAxes),ticklocation='top')
     # plot land surface
-    ax[0].fill_betweenx(ds.y,ds.isel(y=0).where(lambda x:x.Botlev<=0,drop=True).isel(x=0).x.item(),xmax,color="peachpuff",clip_on=True)
+    ax[0].fill_betweenx(ds.y,ds.isel(y=0).where(lambda x:x.Botlev<=0,drop=True).isel(x=0).x.item(),ds.isel(y=0).where(lambda x:x.Botlev<=0,drop=True).isel(x=-1).x.item(),color="peachpuff",clip_on=True)
     # plot reef contour
     if plot_dep_dev:
         (-(ds.where(ds.Botlev-ds.isel(y=0).Botlev!=0,drop=True).Botlev)).plot.contourf(ax=ax[0],colors="k",add_colorbar=False)
@@ -137,7 +137,7 @@ def Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,v
 
 def MV_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,vel_clip_max=0.9,vel_clip_min=0.1,plot_dep_dev=False,dep_levels=None,mveta_levels=None,mveta_ticks=None,cmap="RdBu_r"):
     """
-    Create 2D fig with mass flux velocities and y-component as colours.
+    Create 2D fig with mean depth-averaged velocities and y-component as colours.
     Args:
         ds (xr data structure): Single data structure with 'x', 'Botlev', 'MVksi' and MVeta'.
         xmin (float, optional): minimum x-position (m). If None, ds.x.min().
@@ -179,7 +179,7 @@ def MV_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,ve
     mveta=ds["MVeta"].plot(ax=ax[0],cmap=cmap,levels=mveta_levels,add_colorbar=False,clip_on=True)
     fig.colorbar(mveta,ticks=mveta_ticks,label=r'$\mathrm{ V [m \cdot s^{-1}]}$ ',orientation='horizontal',cax=ax[0].inset_axes([0.05,1.05,0.85,0.05],transform=ax[0].transAxes),ticklocation='top')
     # plot land surface
-    ax[0].fill_betweenx(ds.y,ds.isel(y=0).where(lambda x:x.Botlev<=0,drop=True).isel(x=0).x.item(),xmax,color="peachpuff",clip_on=True)
+    ax[0].fill_betweenx(ds.y,ds.isel(y=0).where(lambda x:x.Botlev<=0,drop=True).isel(x=0).x.item(),ds.isel(y=0).where(lambda x:x.Botlev<=0,drop=True).isel(x=-1).x.item(),color="peachpuff",clip_on=True)
     # plot reef contour
     if plot_dep_dev:
         (-(ds.where(ds.Botlev-ds.isel(y=0).Botlev!=0,drop=True).Botlev)).plot.contourf(ax=ax[0],colors="k",add_colorbar=False)
@@ -240,7 +240,7 @@ def Hs_Theta_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scal
     hs=ds["Hsig"].plot(ax=ax[0],cmap=cmap,levels=hs_levels,add_colorbar=False,clip_on=True)
     fig.colorbar(hs,ticks=hs_ticks,label=[r'$\mathrm{ H_S}$ [m]',r'$\mathrm{ H_S\,/\,H_{S,0}}$'][Hs0 is not None],orientation='horizontal',cax=ax[0].inset_axes([0.05,1.05,0.85,0.05],transform=ax[0].transAxes),ticklocation='top')
     # plot land surface
-    ax[0].fill_betweenx(ds.y,ds.isel(y=0).where(lambda x:x.Botlev<=0,drop=True).isel(x=0).x.item(),xmax,color="peachpuff",clip_on=True)
+    ax[0].fill_betweenx(ds.y,ds.isel(y=0).where(lambda x:x.Botlev<=0,drop=True).isel(x=0).x.item(),ds.isel(y=0).where(lambda x:x.Botlev<=0,drop=True).isel(x=-1).x.item(),color="peachpuff",clip_on=True)
     # plot reef contour
     if plot_dep_dev:
         (-(ds.where(ds.Botlev-ds.isel(y=0).Botlev!=0,drop=True).Botlev)).plot.contourf(ax=ax[0],colors="k",add_colorbar=False)
@@ -646,7 +646,7 @@ def Mamfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1
     mamfvy=ds["Mamfvy"].plot(ax=ax[0],cmap=cmap,levels=mamfvy_levels,add_colorbar=False,clip_on=True)
     fig.colorbar(mamfvy,ticks=mamfvy_ticks,label=r'$\mathrm{ V [m \cdot s^{-1}]}$ ',orientation='horizontal',cax=ax[0].inset_axes([0.05,1.05,0.85,0.05],transform=ax[0].transAxes),ticklocation='top')
     # plot land surface
-    ax[0].fill_betweenx(ds.y,ds.isel(y=0).where(lambda x:x.Botlev<=0,drop=True).isel(x=0).x.item(),xmax,color="peachpuff",clip_on=True)
+    ax[0].fill_betweenx(ds.y,ds.isel(y=0).where(lambda x:x.Botlev<=0,drop=True).isel(x=0).x.item(),ds.isel(y=0).where(lambda x:x.Botlev<=0,drop=True).isel(x=-1).x.item(),color="peachpuff",clip_on=True)
     # plot reef contour
     if plot_dep_dev:
         (-(ds.where(ds.Botlev-ds.isel(y=0).Botlev!=0,drop=True).Botlev)).plot.contourf(ax=ax[0],colors="k",add_colorbar=False)
@@ -668,7 +668,7 @@ def Mamfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1
 
 def crossp_fig(ds,y_reef,y_exposed,xmin=None,xmax=None):
     """
-    Create 2D fig with moving average of mass flux velocities and y-component as colours.
+    Return figure with cross-shore view of Hs, Setup, U, V, and depth profiles at two y-positions y1 and y2.
     Args:
         ds (xr data structure): Single data structure with 'x', 'Botlev', 'Hsig', 'Setup', 'Mdavx', and 'Mdavy'.
         y1 (float): position 1 of y where to plot cross-section.
