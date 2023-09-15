@@ -107,4 +107,4 @@ def etau_separation(t,eta,u,h,hab,fcutoff):
     # inverse fft
     etai,etar=ifft(Fetai),ifft(Fetar)
     ui,ur=ifft(Fui),ifft(Fur)
-    return etai,etar,ui,ur
+    return etai[:N],etar[:N],ui[:N],ur[:N]
