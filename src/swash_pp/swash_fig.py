@@ -15,8 +15,8 @@ def Hs_Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=
         ymin (float, optional): minimum y-position (m). If None, ds.y.min().
         ymax (float, optional): maximum y-position (m). If None, ds.y.max().
         scale (float, optional): quiver scale (larger values result in smaller arrows). Default to 1.
-        vel_clip_max (float, optional): maximum x- and y-velocity clip (in % of x quantile). Default to 0.9.
-        vel_clip_min (float, optional): minimum absolute velocity (in % of x quantile) to be plotted (otherwise nan). Default to 0.1
+        vel_clip_max (float, optional): maximum x- and y-velocity clip (in m/s). Default to 0.9 (in % of quantile).
+        vel_clip_min (float, optional): minimum absolute velocity (in m/s) to be plotted (otherwise nan). Default to 0.1 (in % of quantile).
         plot_dep_dev (bool), optional: Condition plotting deviations from depth at the first cross-shore section. Default to False.        
         dep_levels(np array, optional): array with depth contour levels (in m) to be plotted. If None, no depth contours.
         hs_levels(np array, optional): array with significant wave height contour levels (in m) to be plotted.
@@ -36,13 +36,13 @@ def Hs_Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=
          ds["Hsig"]=ds["Hsig"]/Hs0
     temp=ds.sel(x=slice(xmin,xmax,math.ceil(dx/((ds.x.isel(x=1)-ds.x.isel(x=0)).values.item()))),
                 y=slice(ymin,ymax,math.ceil(dy/((ds.y.isel(y=1)-ds.y.isel(y=0)).values.item()))))
-    hs_levels = hs_levels or np.arange(0,ds["Hsig"].max().item(),ds["Hsig"].max().item()/100)
-    hs_ticks = hs_ticks or np.around(np.arange(0,hs_levels.max()+hs_levels.max()/5,hs_levels.max()/5),decimals=3)
+    if hs_levels is None: hs_levels = np.arange(0,ds["Hsig"].max().item(),ds["Hsig"].max().item()/100)
+    if hs_ticks is None: hs_ticks = np.around(np.arange(0,hs_levels.max()+hs_levels.max()/5,hs_levels.max()/5),decimals=3)
     # velocity clipping
-    vel_clip_max=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_max).item()
+    vel_clip_max = vel_clip_max or xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_max).item()
     temp["Mfvx"]=temp["Mfvx"].clip(min=-vel_clip_max,max=vel_clip_max)
     temp["Mfvy"]=temp["Mfvy"].clip(min=-vel_clip_max,max=vel_clip_max)
-    vel_clip_min=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_min).item()
+    vel_clip_min = vel_clip_min or xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_min).item()
     temp=temp.where(lambda x:(x["Mfvx"]**2+x["Mfvy"]**2)**0.5>=vel_clip_min,drop=True)
     # figure
     fig,ax=plt.subplots(figsize=(9.2,9.2*(ymax-ymin)/(xmax-xmin)))
@@ -58,7 +58,7 @@ def Hs_Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=
         (-(ds.where(ds.Botlev-ds.isel(y=0).Botlev!=0,drop=True).Botlev)).plot.contourf(ax=ax[0],colors="k",add_colorbar=False)
     # plot quiver with Mfv
     quiv=temp.plot.quiver(ax=ax[0],x="x",y="y",u="Mfvx",v="Mfvy",scale=scale,add_guide=False)
-    ax[0].quiverkey(quiv,0.95,1.02,vel_clip_max,f"{vel_clip_max:.2f} m/s")
+    ax[0].quiverkey(quiv,0.95,1.02,vel_clip_max,f"{vel_clip_max:.3f} m/s")
     # plot depth contour
     if dep_levels is not None:
         x_dep_levels=[ds.isel(y=-1).where(lambda x:x["Botlev"]<=i,drop=True).isel(x=0).x.item() for i in dep_levels]
@@ -81,8 +81,8 @@ def Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,v
         ymin (float, optional): minimum y-position (m). If None, ds.y.min().
         ymax (float, optional): maximum y-position (m). If None, ds.y.max().
         scale (float, optional): quiver scale (larger values result in smaller arrows). Default to 1.
-        vel_clip_max (float, optional): maximum x- and y-velocity clip (in % of x quantile). Default to 0.9.
-        vel_clip_min (float, optional): minimum absolute velocity (in % of x quantile) to be plotted (otherwise nan). Default to 0.1
+        vel_clip_max (float, optional): maximum x- and y-velocity clip (in m/s). Default to 0.9 (in % of quantile).
+        vel_clip_min (float, optional): minimum absolute velocity (in m/s) to be plotted (otherwise nan). Default to 0.1 (in % of quantile).
         plot_dep_dev (bool), optional: Condition plotting deviations from depth at the first cross-shore section. Default to False.        
         dep_levels(np array, optional): array with depth contour levels (in m) to be plotted. If None, no depth contours.
         mfvy_levels(np array, optional): array with V-currents contour levels (in m) to be plotted.
@@ -100,13 +100,13 @@ def Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,v
     temp=ds.sel(x=slice(xmin,xmax,math.ceil(dx/((ds.x.isel(x=1)-ds.x.isel(x=0)).values.item()))),
                 y=slice(ymin,ymax,math.ceil(dy/((ds.y.isel(y=1)-ds.y.isel(y=0)).values.item()))))
     mfvy_max=xr.apply_ufunc(np.abs,ds["Mfvy"]).max().item()
-    mfvy_levels = mfvy_levels or np.arange(-mfvy_max,mfvy_max+mfvy_max/50,mfvy_max/50)
-    mfvy_ticks = mfvy_ticks or np.around(np.arange(-mfvy_max,mfvy_max+mfvy_max/3,mfvy_max/3),decimals=3)
+    if mfvy_levels is None: mfvy_levels = np.arange(-mfvy_max,mfvy_max+mfvy_max/50,mfvy_max/50)
+    if mfvy_ticks is None: mfvy_ticks = np.around(np.arange(-mfvy_max,mfvy_max+mfvy_max/3,mfvy_max/3),decimals=3)
     # velocity clipping
-    vel_clip_max=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_max).item()
+    vel_clip_max = vel_clip_max or xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_max).item()
     temp["Mfvx"]=temp["Mfvx"].clip(min=-vel_clip_max,max=vel_clip_max)
     temp["Mfvy"]=temp["Mfvy"].clip(min=-vel_clip_max,max=vel_clip_max)
-    vel_clip_min=xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_min).item()
+    vel_clip_min = vel_clip_min or xr.apply_ufunc(np.abs,temp["Mfvx"]).quantile(vel_clip_min).item()
     temp=temp.where(lambda x:(x["Mfvx"]**2+x["Mfvy"]**2)**0.5>=vel_clip_min,drop=True)
     # figure
     fig,ax=plt.subplots(figsize=(9.2,9.2*(ymax-ymin)/(xmax-xmin)))
@@ -135,7 +135,7 @@ def Mfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,v
     plt.close()
     return fig
 
-def MV_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,vel_clip_max=0.9,vel_clip_min=0.1,plot_dep_dev=False,dep_levels=None,mveta_levels=None,mveta_ticks=None,cmap="RdBu_r"):
+def MV_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,vel_clip_max=None,vel_clip_min=None,plot_dep_dev=False,dep_levels=None,mveta_levels=None,mveta_ticks=None,cmap="RdBu_r"):
     """
     Create 2D fig with mean depth-averaged velocities and y-component as colours.
     Args:
@@ -145,8 +145,8 @@ def MV_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,ve
         ymin (float, optional): minimum y-position (m). If None, ds.y.min().
         ymax (float, optional): maximum y-position (m). If None, ds.y.max().
         scale (float, optional): quiver scale (larger values result in smaller arrows). Default to 1.
-        vel_clip_max (float, optional): maximum x- and y-velocity clip (in % of x quantile). Default to 0.9.
-        vel_clip_min (float, optional): minimum absolute velocity (in % of x quantile) to be plotted (otherwise nan). Default to 0.1
+        vel_clip_max (float, optional): maximum x- and y-velocity clip (in m/s). Default to 0.9 (in % of quantile).
+        vel_clip_min (float, optional): minimum absolute velocity (in m/s) to be plotted (otherwise nan). Default to 0.1 (in % of quantile).
         plot_dep_dev (bool), optional: Condition plotting deviations from depth at the first cross-shore section. Default to False.        
         dep_levels(np array, optional): array with depth contour levels (in m) to be plotted. If None, no depth contours.
         mveta_levels(np array, optional): array with V-currents contour levels (in m) to be plotted.
@@ -164,13 +164,13 @@ def MV_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1,ve
     temp=ds.sel(x=slice(xmin,xmax,math.ceil(dx/((ds.x.isel(x=1)-ds.x.isel(x=0)).values.item()))),
                 y=slice(ymin,ymax,math.ceil(dy/((ds.y.isel(y=1)-ds.y.isel(y=0)).values.item()))))
     mveta_max=xr.apply_ufunc(np.abs,ds["MVeta"]).max().item()
-    mveta_levels = mveta_levels or np.arange(-mveta_max,mveta_max+mveta_max/50,mveta_max/50)
-    mveta_ticks = mveta_ticks or np.around(np.arange(-mveta_max,mveta_max+mveta_max/3,mveta_max/3),decimals=3)
+    if mveta_levels is None: mveta_levels = np.arange(-mveta_max,mveta_max+mveta_max/50,mveta_max/50)
+    if mveta_ticks is None: mveta_ticks = np.around(np.arange(-mveta_max,mveta_max+mveta_max/3,mveta_max/3),decimals=3)
     # velocity clipping
-    vel_clip_max=xr.apply_ufunc(np.abs,temp["MVksi"]).quantile(vel_clip_max).item()
+    vel_clip_max = vel_clip_max or xr.apply_ufunc(np.abs,temp["MVksi"]).quantile(0.9).item()
     temp["MVksi"]=temp["MVksi"].clip(min=-vel_clip_max,max=vel_clip_max)
     temp["MVeta"]=temp["MVeta"].clip(min=-vel_clip_max,max=vel_clip_max)
-    vel_clip_min=xr.apply_ufunc(np.abs,temp["MVksi"]).quantile(vel_clip_min).item()
+    vel_clip_min = vel_clip_min or xr.apply_ufunc(np.abs,temp["MVksi"]).quantile(0.1).item()
     temp=temp.where(lambda x:(x["MVksi"]**2+x["MVeta"]**2)**0.5>=vel_clip_min,drop=True)
     # figure
     fig,ax=plt.subplots(figsize=(9.2,9.2*(ymax-ymin)/(xmax-xmin)))
@@ -231,8 +231,8 @@ def Hs_Theta_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scal
          ds["Hsig"]=ds["Hsig"]/Hs0
     temp=ds.sel(x=slice(xmin,xmax,math.ceil(dx/((ds.x.isel(x=1)-ds.x.isel(x=0)).values.item()))),
                 y=slice(ymin,ymax,math.ceil(dy/((ds.y.isel(y=1)-ds.y.isel(y=0)).values.item()))))
-    hs_levels = hs_levels or np.arange(0,ds["Hsig"].max().item()+ds["Hsig"].max().item()/100,ds["Hsig"].max().item()/100)
-    hs_ticks = hs_ticks or np.around(np.arange(0,hs_levels.max()+hs_levels.max()/5,hs_levels.max()/5),decimals=3)
+    if hs_levels is None: hs_levels = np.arange(0,ds["Hsig"].max().item()+ds["Hsig"].max().item()/100,ds["Hsig"].max().item()/100)
+    if hs_ticks is None: hs_ticks = np.around(np.arange(0,hs_levels.max()+hs_levels.max()/5,hs_levels.max()/5),decimals=3)
     fig,ax=plt.subplots(figsize=(9.2,9.2*(ymax-ymin)/(xmax-xmin)))
     ax=[ax]
     ax[0].axis('equal')
@@ -488,8 +488,8 @@ def yvel_3D(ds,mkmax=0.1,ymin=None,ymax=None,dy=None,x=0,scale=2,quiver=True,lin
     fig,ax=plt.subplots(figsize=(20,7))
     if contour:
         mkvy_max=xr.apply_ufunc(np.abs,temp["Mkvy"]).max().item()
-        mkvy_levels = mkvy_levels or np.arange(-mkvy_max,mkvy_max+mkvy_max/50,mkvy_max/50)
-        mkvy_ticks = mkvy_ticks or trunc(np.arange(-mkvy_max,mkvy_max+mkvy_max/2,mkvy_max),decimals=3)
+        if mkvy_levels is None: mkvy_levels = np.arange(-mkvy_max,mkvy_max+mkvy_max/50,mkvy_max/50)
+        if mkvy_ticks is None: mkvy_ticks = trunc(np.arange(-mkvy_max,mkvy_max+mkvy_max/2,mkvy_max),decimals=3)
         mkvy=temp.Mkvy.plot(x='y',y='z',cmap=cmap,levels=mkvy_levels,add_colorbar=False)
         fig.colorbar(mkvy,ticks=mkvy_ticks,label=r'$\mathrm{ v\, [m \cdot s^{-1}]}$ ',orientation='horizontal',cax=ax.inset_axes([0.45,0.05,0.35,0.03],transform=ax.transAxes),ticklocation='top') # depth profile from left to right 
     yarray=np.arange(ymin,ymax,dy) # create area of plot
@@ -612,8 +612,8 @@ def Mamfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1
         ymin (float, optional): minimum y-position (m). If None, ds.y.min().
         ymax (float, optional): maximum y-position (m). If None, ds.y.max().
         scale (float, optional): quiver scale (larger values result in smaller arrows). Default to 1.
-        vel_clip_max (float, optional): maximum x- and y-velocity clip (in % of x quantile). Default to 0.9.
-        vel_clip_min (float, optional): minimum absolute velocity (in % of x quantile) to be plotted (otherwise nan). Default to 0.1
+        vel_clip_max (float, optional): maximum x- and y-velocity clip (in m/s). Default to 0.9 (in % of quantile).
+        vel_clip_min (float, optional): minimum absolute velocity (in m/s) to be plotted (otherwise nan). Default to 0.1 (in % of quantile).
         plot_dep_dev (bool), optional: Condition plotting deviations from depth at the first cross-shore section. Default to False.        
         dep_levels(np array, optional): array with depth contour levels (in m) to be plotted. If None, no depth contours.
         mamfvy_levels(np array, optional): array with V-currents contour levels (in m) to be plotted.
@@ -634,10 +634,10 @@ def Mamfv_fig(ds,xmin=None,xmax=None,dx=None,ymin=None,ymax=None,dy=None,scale=1
     if mamfvy_levels is None: mamfvy_levels = np.arange(-mamfvy_max,mamfvy_max+mamfvy_max/50,mamfvy_max/50)
     if mamfvy_ticks is None: mamfvy_ticks = np.around(np.arange(-mamfvy_max,mamfvy_max+mamfvy_max/3,mamfvy_max/3),decimals=3)
     # velocity clipping
-    vel_clip_max=xr.apply_ufunc(np.abs,temp["Mamfvx"]).quantile(vel_clip_max).item()
+    vel_clip_max = vel_clip_max or xr.apply_ufunc(np.abs,temp["Mamfvx"]).quantile(vel_clip_max).item()
     temp["Mamfvx"]=temp["Mamfvx"].clip(min=-vel_clip_max,max=vel_clip_max)
     temp["Mamfvy"]=temp["Mamfvy"].clip(min=-vel_clip_max,max=vel_clip_max)
-    vel_clip_min=xr.apply_ufunc(np.abs,temp["Mamfvx"]).quantile(vel_clip_min).item()
+    vel_clip_min = vel_clip_min or xr.apply_ufunc(np.abs,temp["Mamfvx"]).quantile(vel_clip_min).item()
     temp=temp.where(lambda x:(x["Mamfvx"]**2+x["Mamfvy"]**2)**0.5>=vel_clip_min,drop=True)
     # figure
     fig,ax=plt.subplots(figsize=(9.2,9.2*(ymax-ymin)/(xmax-xmin)))
@@ -696,6 +696,44 @@ def crossp_fig(ds,y_reef,y_exposed,xmin=None,xmax=None):
     [j.text(0,1.02,string.ascii_lowercase[i],fontweight="bold",transform=j.transAxes) for i,j in enumerate(ax.flatten())]
     plt.close()
     return fig
+
+def separate_incident_reflected(ds,ds_bot,fcutoff):
+        """
+        Separates incident and reflected waves from the total water level and velocity time series.
+        The separation is done at the station location and using the bottom layer velocites.
+        Arguments:
+            ds: xarray dataset with the following variables:
+                - Watlev: total water level
+                - Vksi_k: total velocity
+                - kc: vertical layer index
+                - t: time
+                - station_x: station x coordinate
+                - station_y: station y coordinate
+            ds_bot: xarray dataset with the following variables:
+                - Botlev: bottom level
+                - x: x-coordinates
+                - y: y-coordinates
+            fcutoff: cutoff frequency for the low-pass filter
+        Returns:
+            ds: xarray dataset with the following added variables:
+                - station_d: depth at station
+                - hab: height above bed
+                - Watlev_i: incident water level
+                - Watlev_r: reflected water level
+                - Vksi_k_i: incident velocity
+                - Vksi_k_r: reflected velocity
+        """
+        ds["station_d"]=(("stations"),(ds_bot.Botlev.interp(x=ds.station_x,y=ds.station_y)).values) #calculate depth at station
+        nV=len(ds.kc) #number of vertical layers
+        ds=ds.assign_coords({"k":(1-(ds.kc/nV+1/(nV*2)))}) # create k coordinate (% height above bed; 0 for bed and 1 for water surface)
+        ds["hab"]=(("stations","t","kc"),((ds.Watlev+ds.station_d)*ds.k).values,{"standard_name": "height above bed","units":"m"}) # from k = 0 (top) to k = nV-1 (near bed); velocities at mid grid
+        ds=ds.isel(kc=-1,stations=0).drop("k") # bottom layer; this can be set as argument later
+        etai,etar,ui,ur=lwt.etau_separation(t=ds.t.values,eta=ds.Watlev.values,u=ds.Vksi_k.values,h=(ds.Watlev.mean("t")+ds.station_d).item(),hab=ds.hab.mean().item(),fcutoff=fcutoff)
+        ds["Watlev_i"]=("t",etai.real,{"standard_name": "incident water level","units":"m"})
+        ds["Watlev_r"]=("t",etar.real,{"standard_name": "reflected water level","units":"m"})
+        ds["Vksi_k_i"]=("t",ui.real,{"standard_name": "incident velocity","units":"m/s"})
+        ds["Vksi_k_r"]=("t",ur.real,{"standard_name": "reflected velocity","units":"m/s"})
+        return ds
 
 if __name__ == '__main__':
     pass
