@@ -249,7 +249,7 @@ def mat2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
                         temp=dict(filter(lambda item:re.split('(\d+)',item[0])[0] == var,out_sta_3D.items()))
                         okv_k=[int(re.split('(\d+)',i)[1]) for i in temp.keys()]# k axis
                         ds_sta_3D.append(xr.Dataset(
-                                    data_vars={var: (("y", "x",["kc","ke"][okv_k[0]==0]), np.stack(temp.values(),axis=-1)[::-1],
+                                    data_vars={var: (("y", "x",["kc","ke"][okv_k[0]==0]), np.stack(list(temp.values()),axis=-1)[::-1],
                                                                                 {"standard_name":var,
                                                                                 "long_name": swash_dict[var][1],
                                                                                 "units": swash_dict[var][2]})},
