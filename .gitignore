@@ -2,3 +2,4 @@ src/swash_pp.egg-info/*
 *.pyc
 *.ipynb
 *.gif
+build/*
