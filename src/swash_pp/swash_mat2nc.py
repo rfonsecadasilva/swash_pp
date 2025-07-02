@@ -369,7 +369,7 @@ def tab2nc(path_run,path_sc="",run_file="run.sws",save_nc=False):
                     out[swash_dict[tab_rev[i]][0]]=file[custom_index(sum(ndim[:i]),ndim[i],int(np.dot(ndim,np.ones(len(ndim)))),len(file))] # retrieve values for keyword
                     if ndim[i]==1: # reshape into station and time
                         if tab[0] != "'NOGRID'":
-                            out[swash_dict[tab_rev[i]][0]]=np.vstack((out[swash_dict[tab_rev[i]][0]][j::len(point[tab[0]][1])] for j in range(len(point[tab[0]][1]))))  # reorder to groups of stations (rather than default groups of time) and reshape into station and time
+                            out[swash_dict[tab_rev[i]][0]]=np.vstack([out[swash_dict[tab_rev[i]][0]][j::len(point[tab[0]][1])] for j in range(len(point[tab[0]][1]))])  # reorder to groups of stations (rather than default groups of time) and reshape into station and time
                             if swash_dict[tab_rev[i]][0] not in ["Time","Tsec"]: # exclude time as it consists of a coordinate (see below)
                                 ds.append(xr.Dataset(
                                     data_vars={swash_dict[tab_rev[i]][0]: (("stations", "t"), out[swash_dict[tab_rev[i]][0]],
